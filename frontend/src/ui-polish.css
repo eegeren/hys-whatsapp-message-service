@@ -1,4 +1,13 @@
 /* Presentation only: API payloads, send locks and campaign behaviour stay intact. */
+.simple-shell{min-height:0}.simple-header,.simple-rail{flex-shrink:0}
+.chat-view>.compose-area{flex:0 1 auto;min-height:0;max-height:55%;grid-template-rows:auto minmax(0,1fr) auto auto;align-items:stretch}
+.compose-area>.send-locked{grid-row:1}
+.compose-area>.template-compose,.compose-area>.service-media{grid-row:2;min-height:0;max-height:min(35dvh,360px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.compose-area>.template-compose{grid-template-columns:minmax(0,1fr)}
+.compose-area>textarea,.compose-area>.send-button{grid-row:3}
+.compose-area>.send-button{align-self:end;justify-self:end}
+.chat-view .compose-area .send-button span{display:inline}
+.compose-area>.compose-note{grid-row:4}
 :root{--hys-green:#15805a;--hys-ink:#203b32;--hys-muted:#75867e;--hys-border:#e4ece7;--hys-orange:#ee7416}
 button,input,select,textarea{transition:background .16s,border-color .16s,box-shadow .16s}
 input:focus,textarea:focus,select:focus{outline:0;border-color:#3d9c78!important;box-shadow:0 0 0 3px #15805a12}

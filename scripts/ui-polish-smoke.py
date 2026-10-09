@@ -1,5 +1,6 @@
 """Local visual/interaction checks. Every API request is intercepted; no real sends."""
 import json
+import base64
 import threading
 from datetime import datetime,timezone
 from functools import partial
@@ -109,6 +110,34 @@ try:
         expect(page.locator('.bubble-text')).to_contain_text('UI önizleme mesajı')
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         page.screenshot(path=str(out/'ui-conversation-mobile.png'),full_page=True)
+        # Long media templates must never push history or Send out of view.
+        long_body='HYS önizleme kampanyası\n\n'+('Uzun şablon satırı; gerçek müşteri mesajı değildir.\n'*45)
+        template={'id':50,'name':'long_media_preview','body':long_body,'status':'APPROVED','category':'MARKETING','language':'tr','components':json.dumps([{'type':'HEADER','format':'IMAGE'},{'type':'BODY','text':long_body}])}
+        layout=browser.new_page(viewport={'width':1920,'height':960})
+        layout.route('**/api/**',mock)
+        layout.route('**/api/templates',lambda r:r.fulfill(content_type='application/json',body=json.dumps([template])))
+        layout.route('**/api/conversations/preview',lambda r:r.fulfill(content_type='application/json',body=json.dumps({'items':[{'id':7,'direction':'out','body':'Eski gönderim; UI önizlemesi','created':now,'status':'accepted'}]})))
+        layout.goto(f'http://127.0.0.1:{server.server_port}/')
+        layout.get_by_label('Kullanıcı adı *',exact=True).fill('ui-preview')
+        layout.get_by_label('Parola *',exact=True).fill('Preview123!')
+        layout.get_by_role('button',name='Giriş yap',exact=True).click()
+        layout.get_by_label('Onaylı şablon',exact=True).select_option('50')
+        layout.get_by_label('Veya görsel dosyası seçin',exact=True).set_input_files({'name':'synthetic.png','mimeType':'image/png','buffer':base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0l8AAAAASUVORK5CYII=')})
+        for width,height in [(1920,960),(1280,720),(390,844),(390,600)]:
+            layout.set_viewport_size({'width':width,'height':height})
+            layout.wait_for_timeout(100)
+            history=layout.locator('.chat-history').bounding_box()
+            send=layout.locator('.compose-area .send-button').bounding_box()
+            assert history['height']>=100,(width,height,history)
+            assert 0<=send['y'] and send['y']+send['height']<=height,(width,height,send)
+            form=layout.locator('.template-compose').bounding_box()
+            assert form['y']+form['height']<=send['y'],(width,height,form,send)
+            assert layout.locator('.template-compose').evaluate('el=>el.scrollHeight>el.clientHeight')
+            layout.locator('.template-compose').evaluate('el=>el.scrollTop=el.scrollHeight')
+            assert layout.locator('.compose-area .send-button').bounding_box()['y']==send['y']
+            assert layout.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            layout.screenshot(path=str(out/f'ui-long-template-{width}-{height}.png'),full_page=True)
+        layout.close()
         # Selecting a local file does not grant permission-import privileges.
         state['role']='operator'
         operator=browser.new_page(viewport={'width':1440,'height':1000})
