@@ -22,7 +22,7 @@ def conversations(user=Depends(actor),db=Depends(db_session)):
     for m in rows:
         item=grouped.get(m.phone)
         if item is None:
-            item={'key':conversation_key(m.phone),'phone':m.phone if user.role=='admin' else mask(m.phone),'last_body':m.body,'last_direction':m.direction,'last_status':m.status,'last_at':m.created.isoformat(),'unread':0}
+            item={'key':conversation_key(m.phone),'phone':m.phone,'last_body':m.body,'last_direction':m.direction,'last_status':m.status,'last_at':m.created.isoformat(),'unread':0}
             grouped[m.phone]=item
         if m.unread:item['unread']+=1
     return sorted(grouped.values(),key=lambda x:x['last_at'],reverse=True)
@@ -63,7 +63,7 @@ def conversation_detail(key:str,page:int=1,user=Depends(actor),db=Depends(db_ses
     if phone_value is None:raise HTTPException(404,'Konuşma bulunamadı')
     items=db.scalars(select(Message).where(Message.phone==phone_value).order_by(Message.created.desc(),Message.id.desc()).offset((max(1,page)-1)*100).limit(100)).all()
     items=list(reversed(items));audit(db,user.username,'conversation_access',key[:12]);db.commit()
-    return {'key':key,'phone':phone_value if user.role=='admin' else mask(phone_value),'items':[{**serial(m),'phone':phone_value if user.role=='admin' else mask(phone_value)} for m in items]}
+    return {'key':key,'phone':phone_value,'items':[{**serial(m),'phone':phone_value} for m in items]}
 
 class ConversationOpen(BaseModel):phone:str=Field(min_length=8,max_length=20)
 @app.post('/api/conversations/open')
@@ -71,7 +71,7 @@ def open_conversation(data:ConversationOpen,user=Depends(actor),db=Depends(db_se
     try:value=phone(data.phone)
     except ValueError as e:raise HTTPException(422,str(e))
     audit(db,user.username,'conversation_open',mask(value));db.commit()
-    return {'key':conversation_key(value),'phone':value if user.role=='admin' else mask(value),'items':[]}
+    return {'key':conversation_key(value),'phone':value,'items':[]}
 
 class HeaderMedia(BaseModel):
     link:str=Field(default='',max_length=2048)
@@ -180,7 +180,7 @@ def send_direct_message(data,user,db,upload=None):
     for secret in (settings.meta_access_token,settings.meta_app_secret,settings.meta_verify_token):
         if secret:row.error=row.error.replace(secret,'[gizli]')
     audit(db,user.username,'direct_message',row.status);db.commit();db.refresh(row)
-    return {**serial(row),'phone':recipient if user.role=='admin' else mask(recipient),'conversation_key':conversation_key(recipient),'delivery_status':'unknown' if row.status=='accepted' else row.status}
+    return {**serial(row),'phone':recipient,'conversation_key':conversation_key(recipient),'delivery_status':'unknown' if row.status=='accepted' else row.status}
 
 @app.get('/api/messages')
 def messages(direction:str='',status:str='',unread:bool=False,review:bool=False,unmatched:bool=False,page:int=1,user=Depends(actor),db=Depends(db_session)):
@@ -221,7 +221,7 @@ def api_settings(user=Depends(admin),db=Depends(db_session)):
 def client_status(user=Depends(actor),db=Depends(db_session)):
     return {'dry_run':settings.dry_run,'live_enabled':settings.live_send_enabled,'verified':connection_ok(db),'environment':settings.meta_environment,'phone_number_id':settings.meta_phone_number_id if user.role=='admin' else mask(settings.meta_phone_number_id) if settings.meta_phone_number_id else ''}
 @app.post('/api/settings/test')
-def connection_test(user=Depends(admin),db=Depends(db_session)):
+def connection_test(user=Depends(actor),db=Depends(db_session)):
     previous=db.get(SystemValue,'meta_verified')
     if previous:db.delete(previous);db.commit()
     result=graph('GET',settings.meta_phone_number_id,params={'fields':'id,display_phone_number,verified_name'})

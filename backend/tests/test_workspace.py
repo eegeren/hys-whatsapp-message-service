@@ -23,7 +23,12 @@ def add_customer(client, number, *, verified=False):
     return contact_id
 
 
-def test_conversation_views_only_contain_recorded_messages(client):
+@pytest.mark.parametrize('role',['admin','operator'])
+def test_conversation_views_only_contain_recorded_messages(client,role):
+    if role=='operator':
+        assert client.post('/api/users',json={'username':'operator','password':'TestPassword123!','role':'operator'}).status_code==200
+        client.post('/api/logout')
+        assert client.post('/api/login',json={'username':'operator','password':'TestPassword123!'}).status_code==200
     with Session() as db:
         db.add_all([
             Message(phone='+905321234567', body='Gerçek webhook içeriği', direction='in', status='received', unread=True),
@@ -36,8 +41,16 @@ def test_conversation_views_only_contain_recorded_messages(client):
     assert rows[0]['phone'] == '+905321234567'
     assert rows[0]['unread'] == 1
     detail = client.get('/api/conversations/' + rows[0]['key']).json()
+    assert detail['phone']=='+905321234567'
+    assert all(item['phone']=='+905321234567' for item in detail['items'])
     assert [item['body'] for item in detail['items']] == ['Gerçek webhook içeriği', 'API kabulü']
     assert detail['items'][1]['status'] == 'accepted'
+    opened=client.post('/api/conversations/open',json={'phone':'05331234567'})
+    assert opened.status_code==200 and opened.json()['phone']=='+905331234567'
+    client.post('/api/logout')
+    assert client.get('/api/conversations').status_code==401
+    assert client.get('/api/conversations/'+rows[0]['key']).status_code==401
+    assert client.post('/api/conversations/open',json={'phone':'05331234567'}).status_code==401
 
 
 def test_bulk_preview_normalizes_deduplicates_and_requires_hys_permission(client):

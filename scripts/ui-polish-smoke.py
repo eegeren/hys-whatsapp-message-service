@@ -27,6 +27,7 @@ def mock(route):
     elif path=='/dashboard':body={'dry_run':True,'connection':False}
     elif path in ('/settings','/settings/client-status'):body={'dry_run':True,'live_enabled':False,'verified':False}
     elif path=='/settings/webhook':body={'https_configured':False}
+    elif path=='/settings/test':body={'ok':True,'notice':'Meta bağlantı testi tamamlandı; mesaj gönderilmedi.'}
     elif path=='/templates':body=[]
     elif path=='/templates/sync':
         status=503 if state['sync_error'] else 200
@@ -158,6 +159,12 @@ try:
         expect(operator.get_by_text('Dosya seçebilirsiniz;',exact=False)).to_be_visible()
         assert picker.evaluate('el=>getComputedStyle(el,"::file-selector-button").backgroundColor')=='rgb(20, 125, 82)'
         operator.screenshot(path=str(out/'ui-file-controls-operator.png'),full_page=True)
+        operator.get_by_role('button',name='Ayarlar',exact=True).click()
+        connection_test=operator.get_by_role('button',name='Gizli bilgileri göstermeden bağlantıyı test et',exact=True)
+        expect(connection_test).to_be_enabled()
+        expect(operator.get_by_role('button',name='Meta şablonlarını yenile',exact=True)).to_be_disabled()
+        connection_test.click()
+        expect(operator.get_by_role('status').get_by_text('Meta bağlantı testi tamamlandı; mesaj gönderilmedi.',exact=True)).to_be_visible()
         operator.close()
         assert not errors,errors
         assert all('/send' not in path and '/start' not in path for path in requests)
