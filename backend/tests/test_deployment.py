@@ -58,9 +58,105 @@ def test_port_entry_point_uses_railway_port(monkeypatch):
     monkeypatch.setenv('PORT','12345')
     monkeypatch.setattr('app.deployment.validate_production',lambda *a:None)
     calls=[];monkeypatch.setattr('uvicorn.run',lambda *a,**k:calls.append(k))
-    runpy.run_module('app.serve',run_name='__main__')
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module('app.serve',run_name='__main__')
+    assert exc.value.code==0
     assert calls[0]['port']==12345 and calls[0]['host']=='0.0.0.0'
     assert not calls[0]['access_log']
+
+@pytest.mark.parametrize('port',['invalid-secret-value','0','65536'])
+def test_invalid_port_exits_without_disclosing_value(monkeypatch,capsys,port):
+    from app.serve import run
+    monkeypatch.setenv('PORT',port)
+    monkeypatch.setattr('uvicorn.run',lambda *a,**k:pytest.fail('Server must not start'))
+    assert run()==1
+    output=capsys.readouterr().out
+    assert 'Başlangıç durdu' in output
+    if port=='invalid-secret-value':assert port not in output
+    assert 'PORT' in output
+
+def test_unexpected_configuration_error_hides_credentials(monkeypatch,capsys):
+    from app.serve import run
+    def broken(*args):raise RuntimeError('postgresql://user:fake-private-password@host/db')
+    monkeypatch.setattr('app.deployment.validate_production',broken)
+    monkeypatch.setattr('uvicorn.run',lambda *a,**k:pytest.fail('Server must not start'))
+    assert run()==1
+    assert 'fake-private-password' not in capsys.readouterr().out
+
+def test_malformed_database_url_does_not_leak_import_exception():
+    import subprocess,sys
+    env={**os.environ,'DATABASE_URL':'not-a-dsn-with-fake-private-password','PORT':'12345'}
+    result=subprocess.run([sys.executable,'-m','app.serve'],cwd=Path(__file__).resolve().parents[1],env=env,capture_output=True,text=True,timeout=15)
+    assert result.returncode==1
+    assert 'fake-private-password' not in result.stdout+result.stderr
+    assert 'DATABASE_URL' in result.stdout
+    assert 'Traceback' not in result.stderr
+
+def test_railway_defaults_are_production_and_locked():
+    import subprocess,sys
+    env={**os.environ,'RAILWAY_ENVIRONMENT_ID':'fake-environment'}
+    for name in ('APP_ENVIRONMENT','LOCAL_WORKER','DEPLOYMENT_SEND_LOCK','BULK_DISPATCH_ENABLED'):env.pop(name,None)
+    code='from app.core import settings; assert settings.app_environment=="production"; assert not settings.local_worker; assert settings.deployment_send_lock; assert not settings.bulk_dispatch_enabled'
+    result=subprocess.run([sys.executable,'-c',code],cwd=Path(__file__).resolve().parents[1],env=env,capture_output=True,timeout=15)
+    assert result.returncode==0
+
+def test_postgres_connection_and_pool_have_timeouts():
+    from app.core import database_engine_options
+    options=database_engine_options('postgresql+psycopg://user:fake@localhost/db')
+    assert options['pool_timeout']==5
+    assert options['connect_args']['connect_timeout']==5
+    assert 'options' not in options['connect_args'] # Do not impose a timeout on migrations or business queries.
+
+def test_railway_cannot_start_in_local_mode(monkeypatch):
+    from app.deployment import validate_production
+    monkeypatch.setenv('RAILWAY_ENVIRONMENT_ID','fake-environment')
+    monkeypatch.setattr(settings,'app_environment','local')
+    with pytest.raises(RuntimeError,match='APP_ENVIRONMENT=production'):validate_production()
+
+@pytest.mark.parametrize('failure',['database','migration','redis',None])
+def test_production_startup_readonly_checks_hide_secrets(monkeypatch,capsys,failure):
+    from app.deployment import check_startup_dependencies
+    cloud(monkeypatch)
+    queries=[]
+    class Result:
+        def scalars(self):return ['002' if failure=='migration' else '003']
+    class Connection:
+        def __enter__(self):
+            if failure=='database':raise RuntimeError('fake-private-password')
+            return self
+        def __exit__(self,*args):pass
+        def execute(self,sql):queries.append(str(sql));return Result()
+    class Engine:
+        def connect(self):return Connection()
+    class Cache:
+        closed=False
+        def ping(self):
+            if failure=='redis':raise RuntimeError('fake-private-password')
+            return True
+        def close(self):self.closed=True
+    cache=Cache()
+    monkeypatch.setattr('app.core.engine',Engine())
+    monkeypatch.setattr('app.deployment.redis_client',lambda:cache)
+    if failure:
+        with pytest.raises(RuntimeError) as exc:check_startup_dependencies()
+        assert 'fake-private-password' not in str(exc.value)
+    else:check_startup_dependencies()
+    assert all(query.startswith('SELECT ') or query=="SET LOCAL statement_timeout = '5s'" for query in queries)
+    output=capsys.readouterr().out
+    assert 'fake-private-password' not in output
+    assert ('API hazır' in output)==(failure is None)
+    if failure in ('redis',None):assert cache.closed
+
+def test_production_volume_permission_failure_is_safe(monkeypatch,tmp_path):
+    from app.deployment import validate_production
+    cloud(monkeypatch)
+    monkeypatch.setattr(settings,'database_url','postgresql+psycopg://user:fake@localhost/db')
+    monkeypatch.setenv('RAILWAY_VOLUME_MOUNT_PATH',str(tmp_path))
+    monkeypatch.setattr(settings,'bulk_media_dir',str(tmp_path/'media'))
+    def denied(*args,**kwargs):raise PermissionError('fake-sensitive-path')
+    monkeypatch.setattr(Path,'mkdir',denied)
+    with pytest.raises(RuntimeError,match='Kalıcı medya diski yazılabilir değil') as exc:validate_production()
+    assert 'fake-sensitive-path' not in str(exc.value)
 
 def test_postgres_railway_dsn_uses_installed_psycopg_driver():
     assert database_dsn('postgresql://user:password@postgres/db').startswith('postgresql+psycopg://')

@@ -14,3 +14,4 @@ COPY --from=frontend /backend/web ./web
 RUN useradd --create-home hys && chown -R hys:hys /app
 USER hys
 EXPOSE 3000
+CMD ["python", "-m", "app.serve"]

@@ -6,6 +6,8 @@ HYS WhatsApp Yönetim Merkezi: Türkçe mesaj kutusu, tekli şablon/medya gönde
 
 Tam rehber: [Railway + Vercel kurulumu](RAILWAY_VERCEL_KURULUM_TR.md).
 
+Deploy Logs yalnızca “Starting Container” gösteriyorsa: [Railway başlangıç kontrolü](RAILWAY_BASLANGIC_TR.md).
+
 1. Vercel projesinde Root Directory `frontend` seçin; gerçek production panel adresini alın.
 2. Railway projesinde PostgreSQL ve Redis oluşturun; yedekleme ayarlayın.
 3. Railway backend için repo kökünü ve `deploy/Dockerfile.railway` dosyasını seçin (`RAILWAY_DOCKERFILE_PATH`). Backend'e `/data` kalıcı volume bağlayın.

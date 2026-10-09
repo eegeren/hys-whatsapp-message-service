@@ -6,6 +6,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, String, Integer, Text, Boolean, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+# Railway must never inherit the local SQLite / embedded-worker defaults.
+if os.environ.get('RAILWAY_ENVIRONMENT_ID'):
+    os.environ.setdefault('APP_ENVIRONMENT', 'production')
+    os.environ.setdefault('LOCAL_WORKER', 'false')
+    os.environ.setdefault('DEPLOYMENT_SEND_LOCK', 'true')
+    os.environ.setdefault('BULK_DISPATCH_ENABLED', 'false')
+
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./hys-local.db"
     redis_url: str = "redis://localhost:6379/0"
@@ -43,7 +50,14 @@ def database_dsn(value):
     if value.startswith('postgresql://'):return value.replace('postgresql://','postgresql+psycopg://',1)
     return value
 settings.database_url=database_dsn(settings.database_url)
-engine = create_engine(settings.database_url, pool_pre_ping=True,hide_parameters=True, **({"connect_args":{"check_same_thread":False}} if settings.database_url.startswith("sqlite") else {}))
+def database_engine_options(url):
+    if url.startswith('sqlite'):
+        return {'connect_args': {'check_same_thread': False}}
+    if url.startswith('postgresql+psycopg://'):
+        return {'connect_args': {'connect_timeout': 5}, 'pool_timeout': 5}
+    return {}
+
+engine = create_engine(settings.database_url, pool_pre_ping=True,hide_parameters=True, **database_engine_options(settings.database_url))
 if settings.database_url.startswith('sqlite'):
     from sqlalchemy import event
     @event.listens_for(engine,'connect')

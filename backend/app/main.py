@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.exc import IntegrityError
 from argon2 import PasswordHasher
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,8 +14,9 @@ from app.core import *
 
 @asynccontextmanager
 async def lifespan(app):
-    from app.deployment import validate_production
+    from app.deployment import validate_production,check_startup_dependencies
     validate_production()
+    check_startup_dependencies()
     yield
 
 production=settings.app_environment=='production'
@@ -130,6 +131,8 @@ def health(db=Depends(db_session)):
 @app.get('/api/ready')
 def ready(db=Depends(db_session)):
     try:
+        if settings.database_url.startswith('postgresql+psycopg://'):
+            db.execute(text("SET LOCAL statement_timeout = '5s'"))
         db.execute(select(1))
         from app.deployment import redis_client
         redis_client().ping()
