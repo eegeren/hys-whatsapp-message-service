@@ -1,3 +1,4 @@
+import BrandLogo from './BrandLogo';
 import {useState} from 'react';
 import {MessageCircle,ShieldCheck} from 'lucide-react';
 
@@ -32,8 +33,8 @@ export default function AuthPanel({setup,initialError,api,onLogin,onSetup}:Props
   }
  }
  return <div className="login">
-  <div className="login-brand"><div className="brand-mark">HYS<span>•</span></div><p>KÖROĞLU MAĞAZACILIK</p><h1>WhatsApp.<br/>Tek bir merkezde.</h1><p>Mesajlar, izinli toplu gönderimler ve bağlantı ayarları.</p><div className="login-foot"><ShieldCheck size={18}/> Resmî WhatsApp Cloud API</div></div>
-  <div className="login-form"><MessageCircle className="green" size={34}/>
+  <div className="login-brand"><BrandLogo className="login-brand-logo"/><p>KÖROĞLU MAĞAZACILIK</p><h1>WhatsApp.<br/>Tek bir merkezde.</h1><p>Mesajlar, izinli toplu gönderimler ve bağlantı ayarları.</p><div className="login-foot"><ShieldCheck size={18}/> Resmî WhatsApp Cloud API</div></div>
+  <div className="login-form"><BrandLogo className="login-mobile-logo"/><MessageCircle className="green" size={34}/>
    <h2>{register?'Yeni hesap oluştur':'Tekrar hoş geldiniz'}</h2>
    <p>{first?'İlk yönetici hesabınızı kurulum anahtarıyla oluşturun.':register?'Yeni personel hesabı oluşturmak için yönetici doğrulaması gerekir.':'Devam etmek için hesabınıza giriş yapın.'}</p>
    {error&&<div className="error" role="alert">{error}</div>}

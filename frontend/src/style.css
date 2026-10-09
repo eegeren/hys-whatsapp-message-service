@@ -18,3 +18,5 @@
 .compose-area>.service-media{grid-column:1/-1;width:100%;padding:8px 0}.service-media .template-preview-media{max-height:200px;max-width:100%;object-fit:contain}.service-media small{color:#667c71;line-height:1.5;display:block}
 
 .auth-switch{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px;flex-wrap:wrap;color:#657b6c;font-size:13px}.auth-switch button{color:#168653;font-weight:650;padding:8px;text-decoration:underline}
+
+.hys-logo{display:inline-block;position:relative;overflow:hidden;aspect-ratio:2.5;width:130px;flex-shrink:0}.hys-logo img{display:block;position:absolute;top:50%;left:0;transform:translateY(-50%);width:100%;height:auto}.login-brand-logo{width:280px;max-width:100%}.rail-brand-logo{width:54px;margin:0 0 25px}.header-brand-logo{width:110px}.login-mobile-logo{display:none}@media(max-width:760px){.login-mobile-logo{display:block;width:190px;margin-bottom:22px}.login-form>.green{display:none}}@media(max-width:620px){.rail-brand-logo{width:76px;margin:0 auto 0 5px}.header-brand-logo{display:none}}
