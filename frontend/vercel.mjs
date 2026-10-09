@@ -11,9 +11,12 @@ if(!proxySecret || proxySecret.length<32)throw new Error('PANEL_PROXY_SECRET en 
 
 export const config={
   framework:'vite',installCommand:'npm ci',buildCommand:'npm run build:vercel',outputDirectory:'dist',
-  rewrites:[
-    routes.rewrite('/api/(.*)',parsed.origin+'/api/$1',{requestHeaders:{'X-HYS-Proxy-Secret':proxySecret}}),
-    routes.rewrite('/(.*)','/index.html'),
+  routes:[
+    routes.rewrite('/api/(.*)',parsed.origin+'/api/$1',{
+      requestHeaders:{'X-HYS-Proxy-Secret':proxySecret},
+      responseHeaders:{'Cache-Control':'no-store'},
+    }),
+    {handle:'filesystem'},
+    {src:'^/.*$',dest:'/index.html'},
   ],
-  headers:[{source:'/api/(.*)',headers:[{key:'Cache-Control',value:'no-store'}]}],
 };
