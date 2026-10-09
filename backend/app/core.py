@@ -13,6 +13,8 @@ if os.environ.get('RAILWAY_ENVIRONMENT_ID'):
     os.environ.setdefault('DEPLOYMENT_SEND_LOCK', 'true')
     os.environ.setdefault('BULK_DISPATCH_ENABLED', 'false')
 
+MIN_PASSWORD_LENGTH = 7
+
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./hys-local.db"
     redis_url: str = "redis://localhost:6379/0"

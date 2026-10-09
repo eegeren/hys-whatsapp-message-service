@@ -79,7 +79,7 @@ def setup_state(db=Depends(db_session)):
     return {'required':db.scalar(select(func.count(User.id)))==0,'database':'PostgreSQL' if settings.database_url.startswith('postgres') else 'SQLite — yerel test','dry_run':settings.dry_run,'bootstrap_required':bool(settings.bootstrap_token)}
 @app.post('/api/setup')
 def setup(data:Credentials,request:Request,db=Depends(db_session)):
-    if settings.app_environment=='production' and len(data.password)<12:raise HTTPException(422,'Production parolası en az 12 karakter olmalıdır.')
+    if settings.app_environment=='production' and len(data.password)<MIN_PASSWORD_LENGTH:raise HTTPException(422,f'Production parolası en az {MIN_PASSWORD_LENGTH} karakter olmalıdır.')
     if db.scalar(select(func.count(User.id))):raise HTTPException(409,'İlk kurulum tamamlandı')
     if settings.bootstrap_token and not secrets.compare_digest(data.bootstrap_token,settings.bootstrap_token):raise HTTPException(403,'Kurulum anahtarı hatalı')
     if not settings.bootstrap_token and request.client.host not in ('127.0.0.1','::1','testclient'):raise HTTPException(403,'Uzak kurulum için BOOTSTRAP_TOKEN ayarlayın')
@@ -89,7 +89,7 @@ def setup(data:Credentials,request:Request,db=Depends(db_session)):
     return {'ok':True}
 @app.post('/api/login')
 def login(data:Credentials,request:Request,response:Response,db=Depends(db_session)):
-    if settings.app_environment=='production' and len(data.password)<12:raise HTTPException(401,'Production için güçlü personel parolası gerekir. Güvenli parola yenileme adımını uygulayın.')
+    if settings.app_environment=='production' and len(data.password)<MIN_PASSWORD_LENGTH:raise HTTPException(401,f'Parola en az {MIN_PASSWORD_LENGTH} karakter olmalıdır.')
     key='login:'+hashlib.sha256((request.client.host+':'+data.username.lower()).encode()).hexdigest();rate=db.get(SystemValue,key)
     count,stamp=json.loads(rate.value) if rate else [0,time.time()]
     if time.time()-stamp>300:count,stamp=0,time.time()
@@ -115,7 +115,7 @@ def logout(request:Request,response:Response,user=Depends(actor),db=Depends(db_s
 class NewUser(Credentials):role:str='operator'
 @app.post('/api/users')
 def add_user(data:NewUser,user=Depends(admin),db=Depends(db_session)):
-    if settings.app_environment=='production' and len(data.password)<12:raise HTTPException(422,'Personel parolası en az 12 karakter olmalıdır.')
+    if settings.app_environment=='production' and len(data.password)<MIN_PASSWORD_LENGTH:raise HTTPException(422,f'Personel parolası en az {MIN_PASSWORD_LENGTH} karakter olmalıdır.')
     if data.role not in ('admin','operator'):raise HTTPException(422,'Geçersiz rol')
     if db.scalar(select(User).where(User.username==data.username)):raise HTTPException(409,'Kullanıcı mevcut')
     db.add(User(username=data.username,password=ph.hash(data.password),role=data.role));audit(db,user.username,'user_create',data.username);db.commit();return {'ok':True}

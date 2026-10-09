@@ -4,13 +4,13 @@ from pathlib import Path
 from sqlalchemy import select,delete
 from argon2 import PasswordHasher
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from app.core import Session,User,LoginSession,audit
+from app.core import Session,User,LoginSession,audit,MIN_PASSWORD_LENGTH
 
 def run():
     username=input('Yetkili HYS kullanıcı adı: ').strip()
     password=getpass.getpass('Yeni güçlü parola (gizli): ')
     repeat=getpass.getpass('Yeni parola tekrar (gizli): ')
-    if len(password)<12 or password!=repeat:raise ValueError()
+    if not MIN_PASSWORD_LENGTH<=len(password)<=128 or password!=repeat:raise ValueError()
     with Session() as db:
         user=db.scalar(select(User).where(User.username==username))
         if not user or user.role not in ('admin','operator'):raise ValueError()

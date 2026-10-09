@@ -54,7 +54,7 @@ Backend ve worker: replica 1, Restart ON_FAILURE, max retries 10. Backend volume
 
 Production'da oturum, rol, mutation CSRF başlığı, Origin ve Vercel proxy anahtarı kontrol edilir. Yönetim endpointleri doğrudan Railway URL'sinden anonim açılamaz. Webhook yalnızca GET verify token / POST HMAC ile; login ve bir defalık bootstrap kendi kontrolleriyle, sağlık endpointleri ise hassas veri vermeden çalışır. API dokümantasyonu production'da kapalıdır.
 
-`hys / hys` gibi kısa yerel parolalar cloud'da kabul edilmez. Veri taşıma kullanıcı parola hash'lerini korur fakat eski oturumları taşımaz. Güvenli yerel/SSH konsolunda, hedef DB ortamı seçiliyken `python tools/reset_password.py` çalıştırın. Parola yalnızca gizli girişle alınır, minimum 12 karakter; veritabanına Argon2 hash kaydedilir. Hedef kullanıcının eski oturumları kapatılır. Kullanıcı oluşturma/değiştirme işlemlerini yalnızca yetkili yöneticiler yapmalıdır.
+`hys / hys` gibi kısa yerel parolalar cloud'da kabul edilmez. Veri taşıma kullanıcı parola hash'lerini korur fakat eski oturumları taşımaz. Güvenli yerel/SSH konsolunda, hedef DB ortamı seçiliyken `python tools/reset_password.py` çalıştırın. Parola yalnızca gizli girişle alınır, minimum 7 karakter; veritabanına Argon2 hash kaydedilir. Hedef kullanıcının eski oturumları kapatılır. Kullanıcı oluşturma/değiştirme işlemlerini yalnızca yetkili yöneticiler yapmalıdır.
 
 ## Verileri kaybetmeden kontrollü taşıma
 

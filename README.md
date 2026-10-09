@@ -29,7 +29,7 @@ Dağıtım ayar listesi: [deploy/railway-services.json](deploy/railway-services.
 
 İlk cloud dağıtımında `DRY_RUN=true`, `LIVE_SEND_ENABLED=false`, `DEPLOYMENT_SEND_LOCK=true`, `BULK_DISPATCH_ENABLED=false` kalır. Gönderim kilidini kaldırmak ayrıca yönetici onayı gerektirir. Taşınan aktif kampanyalar hedefte duraklatılır; eski kabul/teslim/okundu kayıtları yeniden gönderilmez.
 
-Production girişte en az 12 karakterli personel parolası, HttpOnly/Secure oturum çerezi, rol, Origin ve mutation CSRF kontrolleri uygulanır. Kısa yerel parolayı cloud'da kullanmayın. Medya taslakları kalıcı backend volume'unda saklanır; kamuya açık dosya servisi değildir.
+Production girişte en az 7 karakterli personel parolası, HttpOnly/Secure oturum çerezi, rol, Origin ve mutation CSRF kontrolleri uygulanır. Kısa yerel parolayı cloud'da kullanmayın. Medya taslakları kalıcı backend volume'unda saklanır; kamuya açık dosya servisi değildir.
 
 ## Veritabanı ve yedekleme
 

@@ -41,7 +41,7 @@ export default function AuthPanel({setup,initialError,api,onLogin,onSetup}:Props
    <form key={register?'register':'login'} onSubmit={submit}>
     <div className="form-grid">
      <label className="field"><span>Kullanıcı adı *</span><input name="username" required minLength={3} maxLength={100} autoComplete="username"/></label>
-     <label className="field"><span>Parola *</span><input aria-label="Parola *" name="password" type="password" required minLength={register?12:3} maxLength={128} autoComplete={register?'new-password':'current-password'}/>{register&&<small>En az 12 karakter kullanın.</small>}</label>
+     <label className="field"><span>Parola *</span><input aria-label="Parola *" name="password" type="password" required minLength={register?7:3} maxLength={128} autoComplete={register?'new-password':'current-password'}/>{register&&<small>En az 7 karakter kullanın.</small>}</label>
      {first&&setup?.bootstrap_required&&<label className="field"><span>Kurulum anahtarı *</span><input name="bootstrap_token" type="password" required autoComplete="off"/></label>}
      {register&&!first&&<>
       <label className="field"><span>Yönetici kullanıcı adı *</span><input name="admin_username" required autoComplete="off"/></label>
