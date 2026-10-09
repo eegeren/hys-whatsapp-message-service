@@ -1,0 +1,53 @@
+name: hys-whatsapp
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: hys
+      POSTGRES_USER: hys
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U hys -d hys"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build: .
+    env_file: .env
+    ports: ["127.0.0.1:3000:3000"]
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 3000 --no-access-log"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:3000/api/health')"]
+      interval: 5s
+      retries: 30
+  worker:
+    build: .
+    env_file: .env
+    command: celery -A app.worker.celery worker --loglevel=warning --concurrency=1
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+  beat:
+    build: .
+    env_file: .env
+    command: celery -A app.worker.celery beat --loglevel=warning
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  redis_data:

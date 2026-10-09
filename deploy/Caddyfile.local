@@ -1,0 +1,21 @@
+{
+    # Proxy error logs can include verification query strings; suppress request logs.
+    log default {
+        level FATAL
+    }
+}
+
+# HYS_WEBHOOK_DOMAIN must be your actual DNS name. No invented host is supplied.
+{$HYS_WEBHOOK_DOMAIN} {
+    request_body {
+        max_size 2MB
+    }
+    @webhook path /api/webhook
+    handle @webhook {
+        reverse_proxy 127.0.0.1:3000
+    }
+    handle {
+        respond "Not Found" 404
+    }
+    # Access logging intentionally not enabled: GET verification contains a secret.
+}
