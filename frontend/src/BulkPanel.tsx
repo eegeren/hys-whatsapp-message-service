@@ -1,3 +1,4 @@
+import Notifications from './Notifications';
 import {useEffect,useState} from 'react';
 import {Upload,Send,RefreshCw,Pause,Play,Square,Download,ShieldCheck} from 'lucide-react';
 import TemplateFields,{templateInputs,templateComplete} from './TemplateFields';
@@ -25,7 +26,7 @@ export default function BulkPanel({user}:{user:Obj}){
  const admin=user.role==='admin',canReview=!!preview?.eligible_count&&!!selected&&templateComplete(selected as any,values,mediaFile)&&!preview?.needs_column;
  return <section className="section-content bulk-page bulk-friendly">
   <div className="section-intro"><div><span className="section-kicker">İZİNLİ MÜŞTERİLERE KAMPANYA</span><h1>Toplu mesaj</h1><p>Excel'i yükleyin, onaylı şablonu seçin, alıcıları kontrol edip gönderin.</p></div><div className="bulk-safety"><ShieldCheck size={18}/>İzinler harici HYS satış programında yönetilir</div></div>
-  {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="notice" role="status">{notice}</div>}
+  <Notifications error={error} notice={notice} onErrorClose={()=>setError('')} onNoticeClose={()=>setNotice('')}/>
   <div className="bulk-grid"><section className="simple-card"><div className="card-heading"><span className="step-number">1</span><div><h2>Excel veya CSV yükle</h2><p>Yalnızca telefon numarası sütunu yeterli.</p></div></div>
    <label className="upload-drop"><Upload/><strong>{file?.name||'Dosya seçin'}</strong><span>XLSX, XLS, CSV · en fazla 5 MB · 10.000 dolu satır</span><input type="file" accept=".xlsx,.xls,.csv" disabled={busy} onChange={e=>{if(e.target.files?.[0])void upload(e.target.files[0]);e.target.value='';}}/></label>
    {preview&&<><label className="simple-field">Telefon numarası sütunu<select value={preview.phone_column??''} disabled={busy} onChange={e=>file&&void upload(file,Number(e.target.value))}><option value="" disabled>Sütun seçin</option>{preview.columns.map((c:Obj)=><option key={c.index} value={c.index}>{c.name}</option>)}</select></label>

@@ -1,4 +1,5 @@
 import BrandLogo from './BrandLogo';
+import PasswordInput from './PasswordInput';
 import {useState} from 'react';
 import {MessageCircle,ShieldCheck} from 'lucide-react';
 
@@ -37,16 +38,16 @@ export default function AuthPanel({setup,initialError,api,onLogin,onSetup}:Props
   <div className="login-form"><BrandLogo className="login-mobile-logo"/><MessageCircle className="green" size={34}/>
    <h2>{register?'Yeni hesap oluştur':'Tekrar hoş geldiniz'}</h2>
    <p>{first?'İlk yönetici hesabınızı kurulum anahtarıyla oluşturun.':register?'Yeni personel hesabı oluşturmak için yönetici doğrulaması gerekir.':'Devam etmek için hesabınıza giriş yapın.'}</p>
-   {error&&<div className="error" role="alert">{error}</div>}
+   {error&&<div className="error" role="alert">{error.replace(/^Error:\s*/,'')}</div>}
    {notice&&<p className="green" role="status">{notice}</p>}
    <form key={register?'register':'login'} onSubmit={submit}>
     <div className="form-grid">
      <label className="field"><span>Kullanıcı adı *</span><input name="username" required minLength={3} maxLength={100} autoComplete="username"/></label>
-     <label className="field"><span>Parola *</span><input aria-label="Parola *" name="password" type="password" required minLength={register?7:3} maxLength={128} autoComplete={register?'new-password':'current-password'}/>{register&&<small>En az 7 karakter kullanın.</small>}</label>
+     <PasswordInput name="password" label="Parola" minLength={register?7:3} autoComplete={register?'new-password':'current-password'} hint={register?'En az 7 karakter kullanın.':undefined}/>
      {first&&setup?.bootstrap_required&&<label className="field"><span>Kurulum anahtarı *</span><input name="bootstrap_token" type="password" required autoComplete="off"/></label>}
      {register&&!first&&<>
       <label className="field"><span>Yönetici kullanıcı adı *</span><input name="admin_username" required autoComplete="off"/></label>
-      <label className="field"><span>Yönetici parolası *</span><input name="admin_password" type="password" required autoComplete="off"/></label>
+      <PasswordInput name="admin_password" label="Yönetici parolası"/>
      </>}
     </div>
     <button className="primary form-submit" disabled={busy||!setup}>{busy?'İşleniyor…':register?'Hesap oluştur':'Giriş yap'}</button>

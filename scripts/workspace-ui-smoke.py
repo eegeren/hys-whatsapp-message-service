@@ -16,6 +16,10 @@ env = {
     **os.environ,
     'DATABASE_URL': 'sqlite:///' + str(temp / 'workspace.db').replace('\\', '/'),
     'DRY_RUN': 'true',
+    'APP_ENVIRONMENT':'local',
+    'LOCAL_WORKER':'false',
+    'DEPLOYMENT_SEND_LOCK':'true',
+    'BULK_DISPATCH_ENABLED':'false',
     'LIVE_SEND_ENABLED': 'false',
     'BOOTSTRAP_TOKEN': 'workspace-ui-only-bootstrap',
     'HYS_UI_SANDBOX_MOCK': '1',
@@ -50,11 +54,15 @@ try:
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto('http://127.0.0.1:3001')
-        page.get_by_text('Yönetim merkezinizi kurun', exact=True).wait_for()
+        page.get_by_role('heading', name='Yeni hesap oluştur', exact=True).wait_for()
         page.locator('input').nth(0).fill('workspaceadmin')
         page.locator('input').nth(1).fill('WorkspacePassword123!')
         page.get_by_label('Kurulum anahtarı *', exact=True).fill('workspace-ui-only-bootstrap')
-        page.get_by_role('button', name='Yönetici hesabı oluştur', exact=True).click()
+        page.get_by_role('button', name='Hesap oluştur', exact=True).click()
+        page.get_by_role('status').wait_for()
+        page.get_by_label('Kullanıcı adı *',exact=True).fill('workspaceadmin')
+        page.get_by_label('Parola *',exact=True).fill('WorkspacePassword123!')
+        page.get_by_role('button',name='Giriş yap',exact=True).click()
         page.locator('h1').get_by_text('Mesajlar', exact=True).wait_for()
         print('Workspace login ready', flush=True)
         output = root / 'test-results'
