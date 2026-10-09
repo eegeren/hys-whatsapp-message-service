@@ -189,12 +189,29 @@ try:
             assert r.status==200
         assert page.request.post('http://127.0.0.1:3001/api/templates/sync',headers={'X-HYS-Request':'1'}).status==200
         page.locator('.bulk-permissions summary').click()
-        page.get_by_label('Doğrulanmış izinli liste',exact=True).set_input_files({
+        permission_file=page.get_by_label('Doğrulanmış izinli liste',exact=True)
+        with page.expect_file_chooser() as chooser:
+            permission_file.click()
+        chooser.value.set_files({
             'name':'permissions.csv','mimeType':'text/csv','buffer':b'phone\n05321234567\n05331234567\n',
         })
+        assert page.get_by_role('button',name='İzinli numaraları eşleştir',exact=True).is_disabled()
+        page.locator('.bulk-checkbox input').check()
+        with page.expect_file_chooser() as chooser:
+            permission_file.click()
+        chooser.value.set_files({'name':'updated-permissions.csv','mimeType':'text/csv','buffer':b'phone\n05321234567\n05331234567\n'})
+        assert not page.locator('.bulk-checkbox input').is_checked()
         page.locator('.bulk-checkbox input').check()
         page.get_by_role('button',name='İzinli numaraları eşleştir',exact=True).click()
         page.get_by_role('status').get_by_text('2 izinli numara',exact=False).wait_for()
+        assert permission_file.evaluate('el=>el.files.length')==0
+        notices=page.locator('.notification-card').all()
+        assert page.locator('.notification-stack').count()==1
+        if len(notices)>1:
+            boxes=[n.bounding_box() for n in notices]
+            assert all(a['y']+a['height']<=b['y'] for a,b in zip(boxes,boxes[1:]))
+        page.wait_for_timeout(250)
+        page.screenshot(path=str(output/'workspace-file-controls.png'),full_page=True)
         page.locator('.bulk-grid .simple-card').nth(1).locator('select').select_option('1')
         page.get_by_label('Değişken 1',exact=True).fill('Ayşe')
         assert page.locator('.bulk-friendly .template-preview p').inner_text()=='Merhaba Ayşe'

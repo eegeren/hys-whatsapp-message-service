@@ -15,14 +15,14 @@ server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=str(root/'f
 threading.Thread(target=server.serve_forever,daemon=True).start()
 now=datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
 requests=[]
-state={'sync_error':True}
+state={'sync_error':True,'role':'admin'}
 def mock(route):
     path=route.request.url.split('/api',1)[1].split('?',1)[0]
     requests.append(path)
     body={};status=200
     if path=='/setup':body={'required':False,'bootstrap_required':True}
     elif path=='/me':status=401;body={'detail':'Oturum yok'}
-    elif path=='/login':body={'username':'ui-preview','role':'admin'}
+    elif path=='/login':body={'username':'ui-preview','role':state['role']}
     elif path=='/dashboard':body={'dry_run':True,'connection':False}
     elif path in ('/settings','/settings/client-status'):body={'dry_run':True,'live_enabled':False,'verified':False}
     elif path=='/settings/webhook':body={'https_configured':False}
@@ -109,6 +109,27 @@ try:
         expect(page.locator('.bubble-text')).to_contain_text('UI önizleme mesajı')
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         page.screenshot(path=str(out/'ui-conversation-mobile.png'),full_page=True)
+        # Selecting a local file does not grant permission-import privileges.
+        state['role']='operator'
+        operator=browser.new_page(viewport={'width':1440,'height':1000})
+        operator.route('**/api/**',mock)
+        operator.goto(f'http://127.0.0.1:{server.server_port}/')
+        operator.get_by_label('Kullanıcı adı *',exact=True).fill('ui-preview')
+        operator.get_by_label('Parola *',exact=True).fill('Preview123!')
+        operator.get_by_role('button',name='Giriş yap',exact=True).click()
+        operator.get_by_role('button',name='Toplu mesaj',exact=True).click()
+        operator.locator('.bulk-permissions summary').click()
+        picker=operator.get_by_label('Doğrulanmış izinli liste',exact=True)
+        expect(picker).to_be_enabled()
+        with operator.expect_file_chooser() as chooser:
+            picker.click()
+        chooser.value.set_files({'name':'synthetic-permissions.csv','mimeType':'text/csv','buffer':b'phone\n05321234567\n'})
+        expect(operator.get_by_role('button',name='İzinli numaraları eşleştir',exact=True)).to_be_disabled()
+        expect(operator.locator('.bulk-checkbox input')).to_be_disabled()
+        expect(operator.get_by_text('Dosya seçebilirsiniz;',exact=False)).to_be_visible()
+        assert picker.evaluate('el=>getComputedStyle(el,"::file-selector-button").backgroundColor')=='rgb(20, 125, 82)'
+        operator.screenshot(path=str(out/'ui-file-controls-operator.png'),full_page=True)
+        operator.close()
         assert not errors,errors
         assert all('/send' not in path and '/start' not in path for path in requests)
         browser.close()

@@ -4,6 +4,22 @@ button,input,select,textarea{transition:background .16s,border-color .16s,box-sh
 input:focus,textarea:focus,select:focus{outline:0;border-color:#3d9c78!important;box-shadow:0 0 0 3px #15805a12}
 button:focus-visible,a:focus-visible{outline:3px solid #73b69a;outline-offset:3px}
 button:disabled{cursor:not-allowed}button{touch-action:manipulation}
+/* Native file controls stay clickable and keyboard accessible. */
+input[type=file]{display:block;width:100%;min-height:48px;padding:7px;border:1.5px solid #9ab8a5;border-radius:10px;background:#f3f8f5;color:#294d3b;cursor:pointer;font-size:12px;box-sizing:border-box}
+input[type=file]::file-selector-button{margin-right:12px;padding:10px 15px;border:1px solid #106747;border-radius:7px;background:#147d52;color:#fff;font:inherit;font-weight:700;cursor:pointer;box-shadow:0 2px 4px #163d241a}
+input[type=file]:not(:disabled):hover{border-color:#147d52;background:#eaf5ee}
+input[type=file]:not(:disabled)::file-selector-button:hover{background:#106747}
+input[type=file]:disabled{cursor:not-allowed;background:#edf1ef;color:#6c7d72}
+input[type=file]:disabled::file-selector-button{background:#dce5df;border-color:#bacabd;color:#65746a;cursor:not-allowed;box-shadow:none}
+.upload-drop input[type=file]{inset:0;width:100%;height:100%;min-height:0;opacity:0;padding:0;cursor:pointer}
+.upload-drop:focus-within{outline:3px solid #73b69a;outline-offset:3px}.upload-drop:has(input:disabled){opacity:.65;cursor:wait}
+.button-light,.secondary,.bulk-friendly button:not(.button-green):not(.notification-card button){border:1.5px solid #9ab8a5;background:#f0f7f3;color:#24533a;box-shadow:0 2px 4px #163d240a;font-weight:650}
+.button-light:not(:disabled):hover,.secondary:not(:disabled):hover,.bulk-friendly button:not(.button-green):not(:disabled):not(.notification-card button):hover{background:#e3f1e8;border-color:#147d52}
+.bulk-friendly button:disabled,.button-light:disabled,.secondary:disabled{opacity:1;background:#edf1ef;color:#76877d;border-color:#d0dbd4;box-shadow:none}
+.bulk-friendly summary,.advanced-test>summary{border:1px solid #aac7b4;border-radius:8px;padding:11px 13px;background:#eff7f2;color:#1b6946;line-height:1.5}
+.bulk-friendly summary:hover,.advanced-test>summary:hover{background:#e1f0e7;border-color:#147d52}
+input[type=checkbox]{width:20px;height:20px;min-width:20px;accent-color:#147d52;cursor:pointer;vertical-align:middle}
+input[type=checkbox]:disabled{cursor:not-allowed}.bulk-checkbox{padding:12px;border:1px solid #b4cdbd;border-radius:9px;background:#f5faf7;cursor:pointer}.bulk-checkbox input{width:20px;height:20px;margin-top:1px}.bulk-checkbox:has(input:checked){border-color:#147d52;background:#eaf5ee}
 .login{min-height:100dvh;background:#f7faf8;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .login-brand{background:radial-gradient(ellipse at 20% 10%,#265846 0,transparent 65%),#163f33;padding:clamp(40px,5vw,80px);display:flex;flex-direction:column;justify-content:center}
 .login-brand-logo{width:280px;margin-bottom:16px}.login-brand>p:first-of-type{letter-spacing:2.5px;font-size:10px;color:#bbd1c5}
