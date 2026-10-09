@@ -21,6 +21,12 @@ Bu ayarlar backend servisi içindir. Ayrı worker servisi aynı Railway Dockerfi
 
 ## Variables
 
+### Build sırasında `/backend: not found`
+
+Logda `frontend` aşaması ve `node:22-alpine` görünüyorsa kök Dockerfile seçilmiştir; backend'e özel Railway Dockerfile yalnızca Python kullanır. Kök Dockerfile frontend çıktısını artık açıkça `/frontend/dist` içine üretip aynı yoldan kopyalar. Eski `/backend/web` aşamalar arası çıktı yoluna bağımlılık kaldırılmıştır. Yerel Vite build'in varsayılan `backend/web` çıktısı değişmez.
+
+Backend servisi için `RAILWAY_DOCKERFILE_PATH=deploy/Dockerfile.railway` ve Root Directory `/` seçin. `/backend` veya `/frontend` root seçmeyin: bu Dockerfile repo kökündeki `backend/requirements.txt` dosyasını kopyalar. Son commit ile yeniden build başlatın. Yeni build logunda hâlâ Node aşaması görünüyorsa Railway Dockerfile seçimi uygulanmamıştır. Cache temizliği, yanlış Dockerfile veya Root Directory seçimini tek başına düzeltmez.
+
 Railway yerel `.env` dosyasını otomatik taşımaz. Sırları yalnızca Railway Variables alanına girin, Git'e eklemeyin. Tam liste: [API örnek değişkenleri](deploy/railway-api.env.example).
 
 - `DATABASE_URL`: PostgreSQL servisinin referansı, örneğin servis adı Postgres ise `${{Postgres.DATABASE_URL}}`. Gerçek servis adına göre seçin. `postgres://` ve `postgresql://` otomatik olarak psycopg sürücüsüne uyarlanır.
