@@ -1,3 +1,4 @@
+import AuthPanel from './AuthPanel';
 import WebhookPanel from './WebhookPanel';
 import Workspace from './Workspace';
 import React,{useState,useEffect,useRef} from 'react';
@@ -12,11 +13,11 @@ const labels:Row={draft:'Taslak',scheduled:'Planlandı',running:'Gönderiliyor',
 function Badge({value}:{value:string}){return <span className={'badge '+(['verified','APPROVED','delivered','read','completed'].includes(value)?'good':['failed','blocked','revoked','uncertain','REJECTED'].includes(value)?'bad':'neutral')}>{labels[value]||value}</span>}
 function Empty({title='Henüz kayıt yok',text='İlk kaydınızı ekleyerek başlayabilirsiniz.'}:{title?:string;text?:string}){return <div className="empty"><Inbox size={32}/><h3>{title}</h3><p>{text}</p></div>}
 function App(){
- const [setup,setSetup]=useState<Row|null>(null),[user,setUser]=useState<Row|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
+ const [setup,setSetup]=useState<Row|null>(null),[user,setUser]=useState<Row|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  useEffect(()=>{(async()=>{try{setSetup(await api('/setup'));try{setUser(await api('/me'));}catch{}}catch(e){setError(String(e));}finally{setLoading(false)}})()},[]);
  if(loading)return <div className="simple-loading">HYS WhatsApp yükleniyor…</div>;
  if(user)return <Workspace user={user} onLogout={async()=>{try{await api('/logout','POST')}finally{setUser(null)}}}/>;
- return <div className="login"><div className="login-brand"><div className="brand-mark">HYS<span>•</span></div><p>KÖROĞLU MAĞAZACILIK</p><h1>WhatsApp.<br/>Tek bir merkezde.</h1><p>Mesajlar, izinli toplu gönderimler ve bağlantı ayarları.</p><div className="login-foot"><ShieldCheck size={18}/> Resmî WhatsApp Cloud API</div></div><div className="login-form"><MessageCircle className="green" size={34}/><h2>{setup?.required?'Yönetim merkezinizi kurun':'Tekrar hoş geldiniz'}</h2><p>{setup?.required?'İlk yönetici hesabınızı oluşturun.':'Devam etmek için hesabınıza giriş yapın.'}</p>{error&&<div className="error" role="alert">{error}</div>}<Form fields={[{key:'username',label:'Kullanıcı adı',required:true},{key:'password',label:'Parola',type:'password',required:true},...(setup?.required&&setup?.bootstrap_required?[{key:'bootstrap_token',label:'Kurulum anahtarı',type:'password',required:true}]:[])]} initial={{}} busy={busy} button={setup?.required?'Yönetici hesabı oluştur':'Giriş yap'} onSubmit={async v=>{setBusy(true);try{if(setup?.required){await api('/setup','POST',v);setSetup({...setup,required:false})}setUser(await api('/login','POST',v));setError('')}catch(e){setError(String(e))}finally{setBusy(false)}}}/><div className="login-note"><ShieldCheck size={16}/> Güvenli iletişim için izin ve gönderim kontrolleri etkindir.</div></div></div>;
+ return <AuthPanel setup={setup} initialError={error} api={api} onLogin={setUser} onSetup={()=>setSetup({...setup,required:false})}/>;
 }
 function Table({rows,columns}:{rows:Row[];columns:Row[]}){return rows.length?<div className="table-wrap"><table><thead><tr>{columns.map(c=><th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.id||i}>{columns.map(c=><td key={c.key}>{c.render?c.render(r):r[c.key]??'—'}</td>)}</tr>)}</tbody></table></div>:<Empty/>;}
 function Pagination({total,number,setNumber}:{total:number;number:number;setNumber:(n:number)=>void}){return <div className="pagination"><span>{total} kayıt · Sayfa {number} / {Math.max(1,Math.ceil(total/50))}</span><div><button className="secondary" disabled={number<=1} onClick={()=>setNumber(number-1)}>Önceki</button><button className="secondary" disabled={number*50>=total} onClick={()=>setNumber(number+1)}>Sonraki</button></div></div>}
