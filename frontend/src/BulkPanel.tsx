@@ -1,4 +1,5 @@
 import Notifications from './Notifications';
+import CarouselTemplateCreator from './CarouselTemplateCreator';
 import {useEffect,useRef,useState} from 'react';
 import {Upload,Send,RefreshCw,Pause,Play,Square,Download,ShieldCheck} from 'lucide-react';
 import TemplateFields,{templateInputs,templateComplete} from './TemplateFields';
@@ -46,6 +47,7 @@ export default function BulkPanel({user}:{user:Obj}){
    <TemplateFields template={selected as any} values={values} onChange={v=>{setValues(v);setReview(null);}} file={mediaFile} cardFiles={cardFiles} onCardFilesChange={f=>{setCardFiles(f);setReview(null);}} onFileChange={f=>{setMediaFile(f);setReview(null);}} disabled={busy}/>
    <div className="cost-row"><span>Yaklaşık ücret</span><strong>Tarife kaynağı yok · bilinmiyor</strong></div><button className="button-green large" disabled={!admin||busy||!canReview} onClick={()=>void prepare()}><Send size={17}/>Alıcıları ve mesajı kontrol et</button>{!admin&&<p>Gönderimi yalnızca yetkili yönetici başlatabilir.</p>}
   </section></div>
+  {admin&&<CarouselTemplateCreator onCreated={()=>void loadTemplates()}/>}
   {progress&&<section className="simple-card campaign-progress"><h2>{progress.campaign.name}</h2><p>{labels[progress.campaign.status]||progress.campaign.status}{progress.test_only?' · Tek alıcı denemesi':''}</p>
    {progress.campaign.kind==='staff'&&progress.campaign.status==='draft'&&!progress.dry_run_enabled&&<div className="approval-actions"><p>Personel gönderimi için iki farklı yönetici onayı gerekir.</p><button disabled={!admin||busy||!!progress.campaign.first_approval} onClick={()=>void action('approve')}>İlk yönetici onayı</button><button disabled={!admin||busy||!progress.campaign.first_approval||!!progress.campaign.second_approval} onClick={()=>void action('confirm')}>İkinci yönetici onayı</button></div>}
    {progress.queue_notice&&<p className="queue-notice" role="status">{progress.queue_notice}</p>}

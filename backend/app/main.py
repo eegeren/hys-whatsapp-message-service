@@ -146,6 +146,6 @@ def worker_health(user=Depends(admin)):
     except Exception:raise HTTPException(503,'Worker bağlantısı doğrulanamadı.')
     return {'healthy':bool(heartbeat),'dispatch_enabled':settings.bulk_dispatch_enabled,'deployment_send_lock':settings.deployment_send_lock}
 
-from app import contacts, campaigns, messaging, test_messages, bulk
+from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates
 web=Path(__file__).resolve().parents[1]/'web'
 if web.exists():app.mount('/',StaticFiles(directory=str(web),html=True),name='web')

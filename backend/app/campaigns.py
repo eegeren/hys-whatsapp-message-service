@@ -36,6 +36,8 @@ def template_sync(user=Depends(actor),db=Depends(db_session)):
 @app.post('/api/templates/{id}/submit')
 def template_submit(id:int,user=Depends(admin),db=Depends(db_session)):
     t=require(db,Template,id)
+    claim='carousel_review:'+hashlib.sha256((settings.meta_waba_id+':'+t.name).encode()).hexdigest()
+    if db.get(SystemValue,claim):raise HTTPException(409,'Bu carousel başvurusu özel onay ekranında yönetilir. Önce Meta şablonlarını yenileyin; tekrar başvuru yapılmadı.')
     result=graph('POST',f'{settings.meta_waba_id}/message_templates',{'name':t.name,'language':t.language,'category':t.category,'components':json.loads(t.components) or [{'type':'BODY','text':t.body}]})
     t.meta_id=result['id'];t.status=result.get('status','PENDING');audit(db,user.username,'template_submit',t.name);db.commit();return serial(t)
 class CampaignInput(BaseModel):
