@@ -1,4 +1,5 @@
 /* Presentation only: API payloads, send locks and campaign behaviour stay intact. */
+.queue-notice{padding:12px 15px;border:1px solid #e8cf9d;border-left:4px solid #b78326;border-radius:9px;background:#fff8ea;color:#77541e;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 .simple-shell{min-height:0}.simple-header,.simple-rail{flex-shrink:0}
 .chat-view>.compose-area{flex:0 1 auto;min-height:0;max-height:55%;grid-template-rows:auto minmax(0,1fr) auto auto;align-items:stretch}
 .compose-area>.send-locked{grid-row:1}

@@ -45,7 +45,7 @@ export default function BulkPanel({user}:{user:Obj}){
    <div className="cost-row"><span>Yaklaşık ücret</span><strong>Tarife kaynağı yok · bilinmiyor</strong></div><button className="button-green large" disabled={!admin||busy||!canReview} onClick={()=>void prepare()}><Send size={17}/>Alıcıları ve mesajı kontrol et</button>{!admin&&<p>Gönderimi yalnızca yetkili yönetici başlatabilir.</p>}
   </section></div>
   {progress&&<section className="simple-card campaign-progress"><h2>{progress.campaign.name}</h2><p>{labels[progress.campaign.status]||progress.campaign.status}{progress.test_only?' · Tek alıcı denemesi':''}</p>
-   {progress.queue_notice&&<p className="subtle-note">{progress.queue_notice}</p>}
+   {progress.queue_notice&&<p className="queue-notice" role="status">{progress.queue_notice}</p>}
    <div className="progress-track"><i style={{width:progress.total?100*(progress.total-progress.waiting)/progress.total+'%':'0%'}}/></div>
    <div className="recipient-stats">{[['waiting','Bekliyor'],['accepted','API kabul etti'],['sent','Gönderildi'],['delivered','Teslim edildi'],['read','Okundu'],['failed','Başarısız'],['blocked','Engellendi'],['uncertain','Sonuç belirsiz'],['cancelled','Durduruldu'],['dry_run','Simüle edildi']].map(([key,label])=><div key={key}><strong>{progress[key]||0}</strong><span>{label}</span></div>)}</div>
    <p className="subtle-note">API kabulü teslimat değildir. Gönderildi, teslim edildi ve okundu durumları gerçek webhook kayıtlarından güncellenir. Sonucu belirsiz mesajlar çift gönderimi önlemek için otomatik tekrarlanmaz.</p>

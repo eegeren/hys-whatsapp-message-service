@@ -13,6 +13,7 @@ from app.recipient_files import read_rows,parse_recipients,cell_phone
 from app.contacts import safe_cell
 from app.messaging import DirectMessage,HeaderMedia
 from app.template_components import build_template,definitions,MediaUpload,validate_upload
+from app.queue_health import worker_health
 
 MEDIA_DIR=Path(settings.bulk_media_dir) if settings.bulk_media_dir else Path(__file__).resolve().parents[2]/'.bulk-media'
 
@@ -242,7 +243,28 @@ def bulk_campaign_status(campaign_id:int,page:int=Query(1,ge=1),user=Depends(act
     rows.sort(key=lambda m:m.id)
     recipients=[{'id':m.id,'phone':m.phone if user.role=='admin' else mask(m.phone),'status':m.status,'error':safe_error(m.error) if m.status not in ('delivered','read') else '', 'attempts':m.attempts,'next_attempt':m.next_attempt.isoformat() if m.status=='retry' else None} for m in rows[(page-1)*50:page*50]]
     queue_notice={'paused':'Kampanya duraklatılmış; bekleyen mesajlar gönderilmez.','cancelled':'Kampanya durdurulmuş; iptal edilen mesajlar gönderilmez.'}.get(c.status,'')
-    return {**counts,'waiting':counts['queued']+counts['retry']+counts['sending'],'total':len(rows),'audience_count':c.max_count,'campaign':{'id':c.id,'name':c.name,'status':c.status,'first_approval':c.first_approval,'second_approval':c.second_approval},'started':cfg.get('started',False),'test_only':cfg.get('test_only',False),'failures':failures[:200],'recipients':recipients,'recipient_page':page,'recipient_pages':max(1,(len(rows)+49)//50),'queue_notice':queue_notice,'dry_run_enabled':settings.dry_run,'live_send_enabled':settings.live_send_enabled,'connection_verified':connection_ok(db)}
+    worker=worker_health()
+    if not queue_notice and counts['queued']+counts['retry']+counts['sending']:
+        if c.scheduled and c.scheduled>now():queue_notice='Planlanan gönderim zamanı bekleniyor.'
+        elif settings.deployment_send_lock:queue_notice='Dağıtım gönderim kilidi açık; kuyruk işlenmez.'
+        elif not settings.bulk_dispatch_enabled:queue_notice='Toplu kuyruk kapalı: BULK_DISPATCH_ENABLED etkin değil.'
+        elif not settings.dry_run and not settings.live_send_enabled:queue_notice='Canlı gönderim kapalı; bekleyen mesajlar gönderilmez.'
+        elif worker.get('configuration_matches') is False:queue_notice='Worker ile backend veritabanı veya Meta yapılandırması eşleşmiyor. Worker değişkenlerini kontrol edin.'
+        elif worker.get('send_locked') is True:queue_notice='Worker gönderim kilidi açık; worker servisindeki DEPLOYMENT_SEND_LOCK ayarını kontrol edin.'
+        elif worker.get('dispatch_enabled') is False:queue_notice='Worker kuyruğu kapalı; worker servisindeki BULK_DISPATCH_ENABLED ayarını kontrol edin.'
+        elif not settings.dry_run and worker.get('dry_run') is True:queue_notice='Worker simülasyon modunda; backend ile gönderim modu eşleşmiyor.'
+        elif not settings.dry_run and worker.get('live_enabled') is False:queue_notice='Worker canlı gönderimi kapalı; worker servisindeki LIVE_SEND_ENABLED ayarını kontrol edin.'
+        elif worker['state']=='missing':queue_notice='Aktif worker sinyali yok. Ayrı Railway worker servisini ve Redis bağlantısını kontrol edin.'
+        elif worker['state']=='unavailable':queue_notice='Worker durumu Redis üzerinden doğrulanamadı; bağlantı kontrolü gerekiyor.'
+        elif worker['state']=='error':queue_notice='Worker kuyruk işleme hatası bildiriyor. Worker Deploy Logs içindeki worker_dispatch_failed kaydını kontrol edin.'
+        else:
+            rate=db.get(SystemValue,'bulk_rate:'+now().date().isoformat())
+            try:daily=json.loads(rate.value).get('count',0) if rate else 0
+            except (ValueError,TypeError,AttributeError):daily=0
+            if not isinstance(daily,int):daily=0
+            if daily>=settings.bulk_daily_limit:queue_notice='Günlük gönderim sınırına ulaşıldı; kuyruk sonraki güne kadar bekler.'
+            elif any(m.status=='retry' and m.next_attempt>now() for m in rows):queue_notice='Meta hız sınırı veya geçici hata nedeniyle yeniden deneme zamanı bekleniyor.'
+    return {**counts,'waiting':counts['queued']+counts['retry']+counts['sending'],'total':len(rows),'audience_count':c.max_count,'campaign':{'id':c.id,'name':c.name,'status':c.status,'first_approval':c.first_approval,'second_approval':c.second_approval},'started':cfg.get('started',False),'test_only':cfg.get('test_only',False),'failures':failures[:200],'recipients':recipients,'recipient_page':page,'recipient_pages':max(1,(len(rows)+49)//50),'queue_notice':queue_notice,'worker':worker,'dry_run_enabled':settings.dry_run,'live_send_enabled':settings.live_send_enabled,'connection_verified':connection_ok(db)}
 
 @app.get('/api/bulk/campaign/{campaign_id}/failures.xlsx')
 def export_failures(campaign_id:int,user=Depends(admin),db=Depends(db_session)):

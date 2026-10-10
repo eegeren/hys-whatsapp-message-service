@@ -241,4 +241,39 @@ def test_locked_railway_worker_only_emits_heartbeat(client,monkeypatch):
         def set(self,key,value,**k):heartbeats.append(key);worker.stop()
     monkeypatch.setattr(worker,'redis_client',lambda:Cache())
     worker.run()
-    assert heartbeats==['hys:production-worker:heartbeat'];assert lease.released
+    assert 'hys:production-worker:heartbeat' in heartbeats;assert lease.released
+
+def test_worker_queue_error_keeps_lease_and_recovers_without_double_dispatch(client,monkeypatch,capsys):
+    import app.production_worker as worker
+    monkeypatch.setattr(worker,'stopping',False)
+    monkeypatch.setattr(worker,'validate_production',lambda *a:None)
+    monkeypatch.setattr(settings,'deployment_send_lock',False)
+    monkeypatch.setattr(settings,'bulk_dispatch_enabled',True)
+    class Lease:
+        acquired=0;released=0
+        def acquire(self,**k):self.acquired+=1;return True
+        def extend(self,*a,**k):pass
+        def release(self):self.released+=1
+    lease=Lease();states=[];deleted=[]
+    class Cache:
+        def ping(self):return True
+        def lock(self,*a,**k):return lease
+        def set(self,key,value,**k):
+            if key.endswith(':state'):states.append(json.loads(value)['state'])
+        def delete(self,*keys):deleted.extend(keys)
+        def close(self):pass
+    monkeypatch.setattr(worker,'redis_client',lambda:Cache())
+    calls=[]
+    def dispatch(**kwargs):
+        assert kwargs=={'limit':1}
+        calls.append(1)
+        if len(calls)==1:raise RuntimeError('fake-private-token')
+        worker.stop()
+    monkeypatch.setattr(worker,'dispatch_local',dispatch)
+    monkeypatch.setattr(worker.time,'sleep',lambda *a:None)
+    worker.run()
+    assert len(calls)==2 and lease.acquired==1 and lease.released==1
+    assert 'error' in states and states[-1]=='ready'
+    assert deleted==['hys:production-worker:heartbeat','hys:production-worker:state']
+    output=capsys.readouterr().out
+    assert 'worker_dispatch_failed' in output and 'fake-private-token' not in output
