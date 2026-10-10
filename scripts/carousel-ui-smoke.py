@@ -16,6 +16,8 @@ components=[{'type':'BODY','text':'HYS {{1}}'}, {'type':'CAROUSEL','cards':[
                    {'type':'BUTTONS','buttons':[{'type':'URL','text':'Site','url':'https://example.com'}]}]}
     for _ in range(2)]}]
 template={'id':77,'name':'mock_personel_carousel','body':'HYS {{1}}','language':'tr','category':'MARKETING','status':'APPROVED','components':json.dumps(components)}
+nine_components=[components[0],{'type':'CAROUSEL','cards':[components[1]['cards'][0] for _ in range(9)]}]
+nine_template={**template,'id':88,'name':'mock_nine_cards','components':json.dumps(nine_components)}
 requests=[];drafts=[];reviews=[]
 def mock(route):
     path=route.request.url.split('/api',1)[1].split('?',1)[0];requests.append(path)
@@ -28,7 +30,7 @@ def mock(route):
     elif path=='/settings/webhook':body={}
     elif path=='/conversations':body=[]
     elif path=='/templates/sync':body={'synced':1}
-    elif path=='/templates':body=[template]
+    elif path=='/templates':body=[template,nine_template]
     elif path=='/bulk/preview':
         assert 'staff' in route.request.post_data
         body={'token':'mock-preview-token','columns':[{'index':0,'name':'Telefon'}],'phone_column':0,'needs_column':False,
@@ -65,6 +67,22 @@ try:
         page.get_by_label('Alıcı listesi').select_option('staff')
         assert page.locator('.bulk-permissions').count()==0
         page.locator('.upload-drop input').set_input_files({'name':'staff.csv','mimeType':'text/csv','buffer':b'Telefon\n05321234567\n'})
+        page.get_by_label('Onaylı mesaj şablonu').select_option('77')
+        page.get_by_label('Onaylı mesaj şablonu').select_option('88')
+        expect(page.locator('.bulk-grid .carousel-card')).to_have_count(9)
+        for width,height in ((1920,1000),(1440,1000),(1024,900),(390,844)):
+            page.set_viewport_size({'width':width,'height':height})
+            assert page.evaluate('''()=>{
+                const area=document.querySelector('.bulk-page');
+                const cards=[...document.querySelectorAll('.bulk-grid .carousel-card')];
+                const grid=document.querySelector('.bulk-grid');
+                const upload=grid.firstElementChild.getBoundingClientRect();
+                return area.scrollWidth<=area.clientWidth+1 && document.documentElement.scrollWidth<=innerWidth+1
+                    && upload.width>=Math.min(290,grid.clientWidth)
+                    && cards.every(card=>card.scrollWidth<=card.clientWidth+1 && card.getBoundingClientRect().width>=Math.min(270,grid.clientWidth-45));
+            }'''),f'Carousel layout overflow or compressed cards at {width}'
+            page.screenshot(path=str(out/f'carousel-nine-{width}.png'),full_page=True)
+        page.set_viewport_size({'width':1440,'height':1000})
         page.get_by_label('Onaylı mesaj şablonu').select_option('77')
         expect(page.locator('.bulk-grid .carousel-card')).to_have_count(2)
         check=page.get_by_role('button',name='Alıcıları ve mesajı kontrol et',exact=True)
