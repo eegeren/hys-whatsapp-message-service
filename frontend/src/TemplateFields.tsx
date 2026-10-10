@@ -2,7 +2,7 @@ import {useEffect,useId,useState,useRef} from 'react';
 
 export type TemplateValues=Record<string,string>;
 type Button={type:string;text?:string;url?:string;phone_number?:string};
-type Component={type:string;format?:string;text?:string;buttons?:Button[]};
+type Component={type:string;format?:string;text?:string;buttons?:Button[];cards?:{components:Component[]}[]};
 type TemplateText={body:string;components?:string|Component[]};
 const placeholder=/{{\s*([A-Za-z_][A-Za-z_0-9]*|\d+)\s*}}/g;
 const mediaRules:Record<string,{label:string;accept:string;limit:number}>={
@@ -24,22 +24,26 @@ function parts(template:TemplateText){
  const body=components.find(c=>c.type==='BODY')?.text??template.body??'';
  const footer=components.find(c=>c.type==='FOOTER')?.text||'';
  const buttons=components.find(c=>c.type==='BUTTONS')?.buttons||[];
- const unsupported=components.some(c=>!['HEADER','BODY','FOOTER','BUTTONS'].includes(c.type))||!!header&&!['TEXT','IMAGE','VIDEO','DOCUMENT'].includes(header.format||'TEXT')||buttons.some(b=>!['URL','PHONE_NUMBER','QUICK_REPLY'].includes(b.type));
- return {header,body,footer,buttons,unsupported};
+ const cards=components.find(c=>c.type==='CAROUSEL')?.cards||[];
+ const unsupported=components.some(c=>!['HEADER','BODY','FOOTER','BUTTONS','CAROUSEL'].includes(c.type))||cards.length>0&&(cards.length<2||cards.length>10)||!!header&&!['TEXT','IMAGE','VIDEO','DOCUMENT'].includes(header.format||'TEXT')||buttons.some(b=>!['URL','PHONE_NUMBER','QUICK_REPLY'].includes(b.type));
+ return {header,body,footer,buttons,cards,unsupported};
 }
 function scopedValues(values:TemplateValues,scope:string,keys:string[]){return Object.fromEntries(keys.map(key=>[key,values[scope+key]||'']));}
 function validLink(value:string){try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password&&!['localhost','127.0.0.1','[::1]'].includes(url.hostname);}catch{return false;}}
 function mediaError(kind:string,file:File|null){const rule=mediaRules[kind];return file&&rule&&(!rule.accept.split(',').includes(file.type)||file.size===0||file.size>rule.limit*1024*1024)?`Dosya türünü ve boyutunu kontrol edin (${rule.limit} MB sınırı).`:'';}
-export function templateInputs(template:TemplateText,values:TemplateValues){
- const {header,body,buttons}=parts(template);const headerKind=header?.format||'TEXT';
+function cardValues(values:TemplateValues,index:number):TemplateValues{const prefix=`card:${index}:`;return Object.fromEntries(Object.entries(values).filter(([key])=>key.startsWith(prefix)).map(([key,value])=>[key.slice(prefix.length),value]));}
+export function templateInputs(template:TemplateText,values:TemplateValues):any{
+ const {header,body,buttons,cards}=parts(template);const headerKind=header?.format||'TEXT';
  const buttonValues:TemplateValues={};
  buttons.forEach((button,index)=>{if(button.type==='URL'&&variableKeys(button.url||'').length)buttonValues[String(index)]=values['button:'+index]||'';});
- return {variables:scopedValues(values,'',variableKeys(body)),header_variables:scopedValues(values,'header:',variableKeys(header?.text||'')),button_variables:buttonValues,...(mediaRules[headerKind]?{header_media:{link:values['media:link']||'',filename:values['media:filename']||''}}:{})};
+ const cardInputs=cards.map((card,index)=>templateInputs({body:'',components:card.components},cardValues(values,index)));
+ return {...(cards.length?{cards:cardInputs}:{}),variables:scopedValues(values,'',variableKeys(body)),header_variables:scopedValues(values,'header:',variableKeys(header?.text||'')),button_variables:buttonValues,...(mediaRules[headerKind]?{header_media:{link:values['media:link']||'',filename:values['media:filename']||''}}:{})};
 }
-export function templateComplete(template:TemplateText|undefined,values:TemplateValues,file:File|null=null):boolean{
+export function templateComplete(template:TemplateText|undefined,values:TemplateValues,file:File|null=null,cardFiles:(File|null)[]=[]):boolean{
  if(!template)return false;
- const {header,body,buttons,unsupported}=parts(template);
+ const {header,body,buttons,cards,unsupported}=parts(template);
  if(unsupported||!variableKeys(body).every(key=>!!values[key]?.trim())||!variableKeys(header?.text||'').every(key=>!!values['header:'+key]?.trim()))return false;
+ if(cards.some((card,index)=>!templateComplete({body:'',components:card.components},cardValues(values,index),cardFiles[index]||null)))return false;
  if(buttons.some((button,index)=>button.type==='URL'&&variableKeys(button.url||'').length&&!values['button:'+index]?.trim()))return false;
  const kind=header?.format||'TEXT';return !mediaRules[kind]||(file?!mediaError(kind,file):validLink(values['media:link']||''));
 }
@@ -50,12 +54,12 @@ export function templateSummary(template:TemplateText,values:TemplateValues,file
  buttons.forEach((button,index)=>{const target=button.type==='URL'?filledTemplate(button.url||'',Object.fromEntries(variableKeys(button.url||'').map(key=>[key,values['button:'+index]||'']))):button.type==='PHONE_NUMBER'?button.phone_number:'';lines.push((button.text||'')+(target?' → '+target:''));});
  return lines.filter(Boolean).join('\n');
 }
-export default function TemplateFields({template,values,onChange,file=null,onFileChange,disabled=false}:{template?:TemplateText;values:TemplateValues;onChange:(values:TemplateValues)=>void;file?:File|null;onFileChange?:(file:File|null)=>void;disabled?:boolean}){
+export default function TemplateFields({template,values,onChange,file=null,onFileChange,cardFiles=[],onCardFilesChange,disabled=false}:{template?:TemplateText;values:TemplateValues;onChange:(values:TemplateValues)=>void;file?:File|null;onFileChange?:(file:File|null)=>void;cardFiles?:(File|null)[];onCardFilesChange?:(files:(File|null)[])=>void;disabled?:boolean}){
  const id=useId();const [filePreview,setFilePreview]=useState('');const fileInput=useRef<HTMLInputElement>(null);
  useEffect(()=>{if(!file&&fileInput.current)fileInput.current.value='';},[file,template]);
  useEffect(()=>{if(!file){setFilePreview('');return;}const url=URL.createObjectURL(file);setFilePreview(url);return()=>URL.revokeObjectURL(url);},[file]);
  if(!template)return null;
- const {header,body,footer,buttons,unsupported}=parts(template);const kind=header?.format||'TEXT',rule=mediaRules[kind];
+ const {header,body,footer,buttons,cards,unsupported}=parts(template);const kind=header?.format||'TEXT',rule=mediaRules[kind];
  const mediaSource=file?filePreview:(validLink(values['media:link']||'')?values['media:link']:'');
  function field(key:string,label:string,maxLength=4096){return <label className="template-variable-field" key={key} htmlFor={`${id}-${key}`}>{label}<input id={`${id}-${key}`} type="text" required disabled={disabled} maxLength={maxLength} placeholder={`${label} için metin yazın`} value={values[key]||''} onChange={e=>onChange({...values,[key]:e.target.value})}/></label>;}
  return <div className="template-fields">
@@ -64,12 +68,13 @@ export default function TemplateFields({template,values,onChange,file=null,onFil
   {rule&&<div className="template-media-inputs"><label className="template-variable-field" htmlFor={`${id}-media-link`}>{rule.label} bağlantısı<input id={`${id}-media-link`} type="url" disabled={disabled} maxLength={2048} placeholder="https://… (herkese açık medya dosyası)" value={values['media:link']||''} onChange={e=>{onChange({...values,'media:link':e.target.value});onFileChange?.(null);}}/></label>{onFileChange&&<label className="template-variable-field" htmlFor={`${id}-media-file`}>Veya {rule.label.toLocaleLowerCase('tr-TR')} dosyası seçin<input key={String(template.components)} ref={fileInput} id={`${id}-media-file`} type="file" accept={rule.accept} disabled={disabled} onChange={e=>{onFileChange?.(e.target.files?.[0]||null);onChange({...values,'media:link':''});}}/></label>}<small>{kind==='IMAGE'?'JPEG / PNG':kind==='VIDEO'?'MP4 / 3GP (H.264 video, AAC ses)':'PDF'} · en fazla {rule.limit} MB. Dosya yalnızca Gönder onayından sonra Meta’ya yüklenir.</small>{file&&<small>Seçilen dosya: {file.name} <button type="button" disabled={disabled} onClick={()=>onFileChange?.(null)}>Kaldır</button></small>}{mediaError(kind,file)&&<p className="eligibility-warning">{mediaError(kind,file)}</p>}{kind==='DOCUMENT'&&<label className="template-variable-field" htmlFor={`${id}-filename`}>Belge adı (isteğe bağlı)<input id={`${id}-filename`} disabled={disabled} maxLength={200} value={values['media:filename']||''} placeholder={file?.name||'dosya.pdf'} onChange={e=>onChange({...values,'media:filename':e.target.value})}/></label>}</div>}
   {variableKeys(body).map(key=>field(key,`Değişken ${key}`))}
   {buttons.map((button,index)=>button.type==='URL'&&variableKeys(button.url||'').length?<div key={index}>{field('button:'+index,`URL butonu ${index+1} değişkeni`,2000)}<small>{button.text} · Bağlantının değişken kısmını yazın; tam bağlantı önizlemede görünür.</small></div>:null)}
+  {!!cards.length&&<div className="carousel-editor"><p><strong>{cards.length} görselli carousel</strong> · Her alıcıya tek mesaj; görseller yana kaydırılarak görüntülenir.</p>{onCardFilesChange&&<label className="template-variable-field">Tüm kartların dosyalarını seçin<input type="file" multiple accept="image/jpeg,image/png,video/mp4" disabled={disabled} onChange={e=>{const chosen=Array.from(e.target.files||[]);if(chosen.length!==cards.length){e.target.setCustomValidity(`Tam olarak ${cards.length} dosya seçin.`);e.target.reportValidity();e.target.value='';return;}e.target.setCustomValidity('');onCardFilesChange(chosen);const next={...values};cards.forEach((_,i)=>next[`card:${i}:media:link`]='');onChange(next);}}/><small>Dosyalar seçildiği sırayla kartlara yerleştirilir. Aşağıdaki kartlardan değiştirebilirsiniz.</small></label>}<div className="carousel-cards">{cards.map((card,index)=><section className="carousel-card" key={index}><h3>Kart {index+1}</h3><TemplateFields template={{body:'',components:card.components}} values={cardValues(values,index)} onChange={updated=>onChange({...values,...Object.fromEntries(Object.entries(updated).map(([key,value])=>[`card:${index}:${key}`,value]))})} file={cardFiles[index]||null} onFileChange={onCardFilesChange?selected=>{const next=[...cardFiles];next[index]=selected;onCardFilesChange(next);}:undefined} disabled={disabled}/></section>)}</div></div>}
   <div className="template-preview" aria-live="polite"><span>MESAJ ÖNİZLEMESİ</span>
    {header&&kind==='TEXT'&&<div className="template-preview-header">{filledTemplate(header.text||'',scopedValues(values,'header:',variableKeys(header.text||'')))}</div>}
    {rule&&(mediaSource?(kind==='IMAGE'?<img className="template-preview-media" src={mediaSource} alt="Seçilen şablon görseli"/>:kind==='VIDEO'?<video className="template-preview-media" src={mediaSource} controls preload="none"/>:<a className="template-preview-document" href={mediaSource} target="_blank" rel="noopener noreferrer">📄 {values['media:filename']||file?.name||'Belgeyi görüntüle'}</a>):<div className="template-preview-media-placeholder">{rule.label} başlığı · medya seçin</div>)}
    <p>{filledTemplate(body,values)||'Şablon metni alınamadı.'}</p>{footer&&<div className="template-preview-footer">{footer}</div>}
    {buttons.length>0&&<div className="template-preview-buttons">{buttons.map((button,index)=><div className="template-preview-button" key={index}><strong>{button.text}</strong>{button.type==='URL'&&<small>{filledTemplate(button.url||'',Object.fromEntries(variableKeys(button.url||'').map(key=>[key,values['button:'+index]||''])))}</small>}{button.type==='PHONE_NUMBER'&&<small>{button.phone_number}</small>}</div>)}</div>}
-   {!templateComplete(template,values,file)&&!unsupported&&<small>Göndermeden önce gerekli değişkenleri ve medya başlığını doldurun.</small>}
+   {!templateComplete(template,values,file,cardFiles)&&!unsupported&&<small>Göndermeden önce gerekli değişkenleri ve medya başlığını doldurun.</small>}
   </div>
  </div>;
 }

@@ -77,7 +77,14 @@ class HeaderMedia(BaseModel):
     link:str=Field(default='',max_length=2048)
     filename:str=Field(default='',max_length=200)
 
+class CarouselCardInput(BaseModel):
+    variables:dict[str,str]=Field(default_factory=dict,max_length=20)
+    header_variables:dict[str,str]=Field(default_factory=dict,max_length=20)
+    button_variables:dict[str,str]=Field(default_factory=dict,max_length=10)
+    header_media:HeaderMedia|None=None
+
 class DirectMessage(BaseModel):
+    cards:list[CarouselCardInput]=Field(default_factory=list,max_length=10)
     phone:str|None=Field(default=None,min_length=8,max_length=20)
     conversation_key:str|None=Field(default=None,min_length=64,max_length=64)
     body:str=Field(default='',max_length=4096)

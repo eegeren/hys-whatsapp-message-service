@@ -60,3 +60,11 @@ Backend testleri geçici veritabanı ve sahte Meta yanıtları kullanır. Test a
 Yerel geçmiş/nesnelerde daha önce görülmüş bir sır için `.gitignore` yeterli değildir: anahtar iptal/yenileme ve gerekli geçmiş temizliği ayrıca yapılır. Güvenlik denetiminin ayrıntıları [GitHub hazırlık raporu](GITHUB_HAZIRLIK_TR.md) içindedir.
 
 GitHub push, gerçek veritabanı taşıması ve gerçek WhatsApp gönderimi yalnızca açık yönetici onayıyla gerçekleştirilir.
+
+### Excel personel listesine çoklu görsel (carousel)
+
+Toplu mesaj ekranında **Alıcı listesi → Personeller** seçilir. Excel/CSV telefonları mevcut personel kayıtlarıyla eşleştirilir; doğrulanmış personel iletişim izni, aktiflik ve telefonun tüm kayıtlardaki ret/İPTAL durumu korunur. Eksik izinler Excel yüklenerek varsayılmaz ve müşteri izin dışa aktarımı personel izni yerine geçmez. Canlı personel gönderimindeki mevcut iki farklı yönetici onayı korunur; taslak sonuçlarında onay düğmeleri bulunur.
+
+Bir mesajda birden fazla görsel için ilgili production WABA’da Meta **APPROVED / MARKETING / CAROUSEL** şablonu gerekir. Standart IMAGE başlığı bir görsel alır; otomatik olarak carousel’e çevrilmez. Meta şablonlarını yenileyip 2–10 görsel/video kartlı onaylı carousel seçin. Şablonun kart sayısı kadar dosyayı seçin; her kartı ayrıca değiştirebilir veya herkese açık HTTPS bağlantısı girebilirsiniz. JPEG/PNG dosyaları kart başına 5 MB, MP4 dosyaları 16 MB ile sınırlıdır. Kartlar aynı medya türünde olmalıdır. Ana metin ve kart değişkenleri normal alanlarda doldurulur; şablon dili, kart ve buton sırası korunur. Önizlemede görülen kartlar WhatsApp’ta yana kaydırılarak görüntülenir.
+
+Medya taslakları kalıcı BULK_MEDIA_DIR altında tutulur ve ancak açık Gönder onayında Meta’ya yüklenir. Kart başına yüklenen Meta ID kaydedilir; yarıda kalan yüklemede tamamlanmış kart tekrar yüklenmez. Tüm kartlar yüklenmeden hiçbir alıcı kuyruğa eklenmez. Her uygun personel için bir carousel mesajı kuyruğa girer; mevcut hız sınırı, tekrar önleme, duraklatma ve webhook teslimat kuralları geçerlidir. DRY_RUN açıkken Meta medya yüklemesi yapılmaz. Onaylı carousel’in Meta’da oluşturulması/onaylanması ayrıca gerekir; uygulama bir şablonu kendiliğinden onaylı kabul etmez.

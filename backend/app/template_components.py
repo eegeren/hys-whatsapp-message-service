@@ -22,7 +22,7 @@ def definitions(template):
     except (ValueError,TypeError):raise HTTPException(422,'Meta şablon bileşenleri okunamadı. Şablonları yenileyin.')
     if not isinstance(items,list) or any(not isinstance(item,dict) for item in items):raise HTTPException(422,'Geçersiz Meta şablon bileşenleri.')
     types=[str(item.get('type','')).upper() for item in items]
-    if any(t not in ('HEADER','BODY','FOOTER','BUTTONS') for t in types) or len(types)!=len(set(types)):
+    if any(t not in ('HEADER','BODY','FOOTER','BUTTONS','CAROUSEL') for t in types) or len(types)!=len(set(types)):
         raise HTTPException(422,'Bu şablon özel veya tekrarlanan bileşenler içeriyor; standart başlık, metin, alt metin ve buton şablonu seçin.')
     return {str(item['type']).upper():item for item in items}
 
@@ -72,7 +72,7 @@ def validate_upload(kind,upload):
                 'video/mp4':upload.content[4:8]==b'ftyp','video/3gpp':upload.content[4:8]==b'ftyp'}
     if not signatures.get(upload.content_type):raise HTTPException(422,'Dosya içeriği belirtilen medya türüyle eşleşmiyor.')
 
-def build_template(template,data,upload=None):
+def build_template(template,data,upload=None,card_uploads=None):
     items=definitions(template);components=[];preview=[];media_kind=None
     header=items.get('HEADER')
     if header:
@@ -127,6 +127,34 @@ def build_template(template,data,upload=None):
             preview.append(label)
         else:raise HTTPException(422,f'{index+1}. butonun {kind} türü bu gönderim akışında desteklenmiyor.')
     if set(data.button_variables)!=used:raise HTTPException(422,'Yalnızca dinamik URL butonlarının değişkenlerini doldurun.')
+    carousel=items.get('CAROUSEL')
+    cards=getattr(data,'cards',[])
+    if carousel:
+        from types import SimpleNamespace
+        approved=carousel.get('cards',[])
+        if items.get('HEADER') or template.category!='MARKETING' or not isinstance(approved,list) or not 2<=len(approved)<=10:
+            raise HTTPException(422,'Carousel için 2–10 kart içeren onaylı Marketing şablonu seçin.')
+        if len(cards)!=len(approved):raise HTTPException(422,'Şablondaki her görsel kartını doldurun.')
+        uploads=card_uploads or {}
+        if any(i<0 or i>=len(approved) for i in uploads):raise HTTPException(422,'Geçersiz görsel kartı.')
+        built=[];formats=set()
+        for index,(definition,values) in enumerate(zip(approved,cards)):
+            if not isinstance(definition,dict):raise HTTPException(422,'Geçersiz carousel kartı.')
+            sub=SimpleNamespace(id=template.id,name=template.name,language=template.language,category=template.category,body='',components=json.dumps(definition.get('components',[])))
+            parsed=definitions(sub)
+            kind=parsed.get('HEADER',{}).get('format','')
+            if 'CAROUSEL' in parsed or kind not in ('IMAGE','VIDEO'):raise HTTPException(422,'Carousel kartı görsel veya video başlığı içermelidir.')
+            formats.add(kind)
+            args=SimpleNamespace(**values.model_dump(),parameters=[],cards=[])
+            # Pydantic nested media must remain an object for the standard builder.
+            args.header_media=values.header_media
+            payload,card_preview,_=build_template(sub,args,uploads.get(index))
+            built.append({'card_index':index,'components':payload.get('components',[])})
+            preview.append(f'Kart {index+1}: '+card_preview)
+        if len(formats)!=1:raise HTTPException(422,'Carousel kartları aynı medya türünü kullanmalıdır.')
+        components.append({'type':'carousel','cards':built})
+        media_kind='carousel'
+    elif cards or card_uploads:raise HTTPException(422,'Bu şablonda carousel kartları bulunmuyor.')
     result={'name':template.name,'language':{'code':template.language}}
     if components:result['components']=components
     return result,'\n'.join(preview),media_kind

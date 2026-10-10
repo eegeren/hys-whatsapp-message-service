@@ -64,7 +64,7 @@ def process_one(id):
         if t.status!='APPROVED' or (c.kind=='customer' and t.category!='MARKETING'):
             m.status='blocked';m.error='Şablon uygun/onaylı değil';db.commit();return
         if cfg:
-            if cfg.get('media_file'):
+            if cfg.get('media_file') or cfg.get('media_files'):
                 m.status='blocked';m.error='Medya henüz Meta’ya yüklenmedi; kampanya onayını kullanın';db.commit();return
             from app.bulk import definition_matches
             if not definition_matches(t,cfg):
