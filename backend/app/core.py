@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import create_engine, String, Integer, Text, Boolean, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, String, Integer, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, LargeBinary, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 # Railway must never inherit the local SQLite / embedded-worker defaults.
@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     webhook_production_waba_id: str = ""
     meta_environment: str = "test"
     live_send_enabled: bool = False
+    staff_upload_origin: str = ""
+    staff_dispatch_enabled: bool = False
+    staff_document_unit_price: float | None = None
+    staff_video_unit_price: float | None = None
+    staff_price_currency: str = "USD"
     bulk_daily_limit: int = 10000
     meta_test_message_enabled: bool = False
     meta_test_phone_number_id: str = ''
@@ -211,3 +216,47 @@ def eligible(c):
     if c.consent != "verified" or not c.evidence or not c.source or not c.consent_date: return False
     if c.kind == "customer": return c.scope == "marketing" and c.iys_status == "manual_verified"
     return c.scope == "staff" and bool(c.legal_basis)
+
+
+class StaffAnnouncement(Base):
+    __tablename__ = 'staff_announcements'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(30), default='draft')
+    config: Mapped[str] = mapped_column(Text, default='{}')
+    preview_token: Mapped[str] = mapped_column(String(64), default='')
+    preview_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    simulation: Mapped[bool] = mapped_column(Boolean, default=True)
+    sender_id: Mapped[str] = mapped_column(String(40), default='')
+    created: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class StaffAsset(Base):
+    __tablename__ = 'staff_assets'
+    __table_args__ = (UniqueConstraint('announcement_id', 'position'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    announcement_id: Mapped[int] = mapped_column(ForeignKey('staff_announcements.id'))
+    position: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20))
+    content_type: Mapped[str] = mapped_column(String(40))
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    size: Mapped[int] = mapped_column(Integer)
+    digest: Mapped[str] = mapped_column(String(64))
+    media_id: Mapped[str] = mapped_column(String(100), default='')
+    expires: Mapped[datetime] = mapped_column(DateTime)
+
+class StaffDelivery(Base):
+    __tablename__ = 'staff_deliveries'
+    __table_args__ = (UniqueConstraint('announcement_id', 'contact_id', 'asset_id'), Index('ix_staff_delivery_queue','status','announcement_id'))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    announcement_id: Mapped[int] = mapped_column(ForeignKey('staff_announcements.id'))
+    contact_id: Mapped[int] = mapped_column(ForeignKey('contacts.id'))
+    asset_id: Mapped[int] = mapped_column(ForeignKey('staff_assets.id'))
+    phone: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(200))
+    store: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(30), default='queued')
+    meta_id: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
+    error: Mapped[str] = mapped_column(Text, default='')
+    attempted: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

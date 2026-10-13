@@ -28,7 +28,7 @@ ph=PasswordHasher()
 async def production_api_guard(request:Request,call_next):
     if settings.app_environment=='production' and request.url.path.startswith('/api/'):
         public=('/api/webhook','/api/health','/api/ready')
-        if request.url.path not in public:
+        if request.url.path not in public and not request.url.path.startswith('/api/staff-upload/'):
             origin=request.headers.get('origin')
             if origin and origin!=settings.panel_origin:return JSONResponse({'detail':'Panel kaynağı yetkili değil.'},status_code=403)
             if request.method=='OPTIONS':return await call_next(request)
@@ -146,6 +146,6 @@ def worker_health(user=Depends(admin)):
     except Exception:raise HTTPException(503,'Worker bağlantısı doğrulanamadı.')
     return {'healthy':bool(heartbeat),'dispatch_enabled':settings.bulk_dispatch_enabled,'deployment_send_lock':settings.deployment_send_lock}
 
-from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates
+from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates, staff
 web=Path(__file__).resolve().parents[1]/'web'
 if web.exists():app.mount('/',StaticFiles(directory=str(web),html=True),name='web')

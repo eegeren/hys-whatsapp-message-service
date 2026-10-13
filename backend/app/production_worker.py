@@ -46,7 +46,10 @@ def run():
             if owned:
                 try:
                     if settings.bulk_dispatch_enabled and not settings.deployment_send_lock:dispatch_local(limit=1)
-                    else:finalize()
+                    else:
+                        finalize()
+                        from app.staff import dispatch_staff
+                        dispatch_staff(limit=1)
                     state='ready'
                 except Exception:
                     # Queue failure does not relinquish an otherwise healthy lease.

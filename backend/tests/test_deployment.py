@@ -144,7 +144,7 @@ def test_production_startup_readonly_checks_hide_secrets(monkeypatch,capsys,fail
     cloud(monkeypatch)
     queries=[]
     class Result:
-        def scalars(self):return ['002' if failure=='migration' else '003']
+        def scalars(self):return ['003' if failure=='migration' else '004']
     class Connection:
         def __enter__(self):
             if failure=='database':raise RuntimeError('fake-private-password')

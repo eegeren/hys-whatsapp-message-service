@@ -82,6 +82,8 @@ def incoming(db,item):
     db.add(Message(contact_id=matches[0].id if len(matches)==1 else None,phone=n,body=body,direction='in',status='received',meta_id=item['id'],unread=True,review=review,created=created))
 
 def delivery(db,item):
+    from app.staff import staff_delivery
+    staff_delivery(db,item)
     m=db.scalar(select(Message).where(Message.meta_id==item['id'],Message.direction=='out'))
     test=None if m else db.scalar(select(TestMessage).where(TestMessage.meta_id==item['id']))
     if not m and not test:return # Durable WebhookItem retains unmatched status.

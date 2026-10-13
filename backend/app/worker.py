@@ -130,6 +130,8 @@ def legacy_payload(t,c,contact,m,db):
         if parameters:payload['template']['components']=[{'type':'body','parameters':parameters}]
         return payload
 def dispatch_local(limit=100):
+    from app.staff import dispatch_staff
+    dispatch_staff(limit=limit)
     if not settings.bulk_dispatch_enabled or settings.deployment_send_lock:return
     with Session() as db:
         ids=list(db.scalars(select(Message.id).join(Campaign,Message.campaign_id==Campaign.id).where(Message.status.in_(['queued','retry']),Message.next_attempt<=now(),Campaign.status.in_(['running','scheduled']),(Campaign.scheduled.is_(None))|(Campaign.scheduled<=now())).order_by(Message.id).limit(limit)))
@@ -151,6 +153,8 @@ def send(id):
     finally:Redis.from_url(settings.redis_url).delete(f'hys:dispatch:{id}')
 @celery.task(name='hys.dispatch')
 def dispatch():
+    from app.staff import dispatch_staff
+    dispatch_staff(limit=1)
     if not settings.bulk_dispatch_enabled or settings.deployment_send_lock:return
     with Session() as db:
         ids=list(db.scalars(select(Message.id).join(Campaign,Message.campaign_id==Campaign.id).where(Message.status.in_(['queued','retry']),Message.next_attempt<=now(),Campaign.status.in_(['running','scheduled']),(Campaign.scheduled.is_(None))|(Campaign.scheduled<=now())).order_by(Message.id).limit(100)))
