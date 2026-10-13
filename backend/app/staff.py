@@ -55,20 +55,22 @@ async def import_staff(file:UploadFile=File(...),user=Depends(admin),db=Depends(
     raw=await file.read(5*1024*1024+1);rows=read_rows(raw,file.filename)
     headers=[header(x) for x in rows[0]]
     def column(names):return next((i for i,h in enumerate(headers) if h in names),None)
-    ni=column({'adsoyad','adisoyadi','isimsoyisim','fullname','name'});pi=column({'telefon','telefonnumarasi','telefonno','phone','gsm','ceptelefonu'});si=column({'magaza','magazaadi','store'})
-    if None in (ni,pi,si):raise HTTPException(422,'Excel başlıkları: Ad Soyad, Telefon, Mağaza olmalıdır.')
+    ni=column({'adsoyad','adisoyadi','isimsoyisim','fullname','name','ad','isim'});pi=column({'telefon','telefonnumarasi','telefonno','phone','gsm','ceptelefonu'});si=column({'magaza','magazaadi','store'})
+    if pi is None:raise HTTPException(422,'Telefon sütunu zorunludur. Ad Soyad ve Mağaza isteğe bağlıdır.')
     errors=[];seen=set();count=0;duplicates=0
     if len(rows)>10001:raise HTTPException(422,'En fazla 10.000 personel yükleyin.')
     for index,row in enumerate(rows[1:],2):
         if not any(str(v or '').strip() for v in row):continue
-        get=lambda i:str(row[i] or '').strip() if i<len(row) else ''
+        get=lambda i:str(row[i] or '').strip() if i is not None and i<len(row) else ''
         n=cell_phone(row[pi] if pi<len(row) else None);name=get(ni);store=get(si)
-        if not n or not name or not store or len(name)>100 or len(store)>160:
-            errors.append({'row':index,'reason':'Ad soyad, geçerli cep telefonu ve mağaza gerekli.'});continue
+        if not n or len(name)>100 or len(store)>160:
+            errors.append({'row':index,'reason':'Geçerli cep telefonu gerekli; ad soyad en fazla 100, mağaza en fazla 160 karakter olabilir.'});continue
         if n in seen:duplicates+=1;continue
         seen.add(n);c=db.scalar(select(Contact).where(Contact.kind=='staff',Contact.phone==n))
         if not c:c=Contact(kind='staff',phone=n,first_name=name);db.add(c)
-        c.first_name=name;c.last_name='';c.store=store;count+=1
+        if name:c.first_name=name;c.last_name=''
+        if store:c.store=store
+        count+=1
     audit(db,user.username,'staff_import',f'{count} kayıt; {len(errors)} hata');db.commit()
     return {'imported':count,'duplicates':duplicates,'errors':errors}
 

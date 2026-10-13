@@ -187,3 +187,32 @@ def test_large_audience_status_pagination(client,prepared):
     assert not ({p['phone'] for p in first['recipients']}&{p['phone'] for p in second['recipients']})
     assert 'config' not in client.get('/api/staff/announcements').json()[0]
     assert 'preview_token' not in first['announcement']
+
+@pytest.mark.parametrize('headers,row',[
+    (['Telefon'],['05321234567']),
+    (['Telefon','Ad Soyad'],['05321234567','Ali Veli']),
+    (['Telefon','Mağaza'],['05321234567','A']),
+    (['Ad Soyad','Telefon','Mağaza'],[None,'05321234567',None]),
+])
+def test_import_optional_staff_fields(client,headers,row):
+    wb=Workbook();wb.active.append(headers);wb.active.append(row);f=io.BytesIO();wb.save(f)
+    response=client.post('/api/staff/import',files={'file':('staff.xlsx',f.getvalue())})
+    assert response.status_code==200,response.text
+    assert response.json()['imported']==1 and response.json()['errors']==[]
+    p=client.get('/api/staff/people').json()[0]
+    assert p['phone']=='+905321234567'
+    assert p['name']==('Ali Veli' if 'Ali Veli' in row else '')
+    assert p['store']==('A' if 'A' in row else '')
+
+def test_phone_only_import_preserves_existing_metadata_and_ret(client):
+    with Session() as db:
+        db.add(Contact(kind='staff',first_name='Ali',last_name='Veli',phone='+905321234567',store='A',opted_out=True,consent='revoked'));db.commit()
+    for raw in (b'Telefon\n05321234567\n',b'Telefon;Ad Soyad;Ma\xc4\x9faza\n05321234567;;\n'):
+        r=client.post('/api/staff/import',files={'file':('staff.csv',raw)});assert r.status_code==200,r.text
+    p=client.get('/api/staff/people').json()[0]
+    assert p['name']=='Ali Veli' and p['store']=='A' and p['blocked']
+
+def test_import_still_requires_phone_column_and_valid_phone(client):
+    r=client.post('/api/staff/import',files={'file':('staff.csv',b'Ad Soyad\nAli Veli\n')});assert r.status_code==422
+    r=client.post('/api/staff/import',files={'file':('staff.csv',b'Telefon\ninvalid\n')})
+    assert r.status_code==200 and r.json()['imported']==0 and len(r.json()['errors'])==1

@@ -6,7 +6,7 @@ Bu bölüm yalnızca `admin` kullanıcılarına açıktır. Mevcut müşteri kam
 
 ## Kullanım
 
-- Excel başlıkları: `Ad Soyad`, `Telefon`, `Mağaza`. XLSX, XLS ve CSV desteklenir; en fazla 10.000 satır / 5 MB. Telefonlar Türk cep numarasına normalize edilir, aynı telefon dosyada bir kez alınır, mevcut personel güncellenir. Hatalı satırlar numaralarıyla bildirilir; mevcut ret kayıtları korunur. Müşteri kayıtları değiştirilmez.
+- Excel'de yalnızca `Telefon` sütunu zorunludur. `Ad Soyad` ve `Mağaza` isteğe bağlıdır; varsa personel seçiminde ad/telefon/mağaza araması ve mağaza filtresi kullanılabilir. Eksik veya boş ad/mağaza mevcut personel bilgilerini silmez. XLSX, XLS ve CSV desteklenir; en fazla 10.000 satır / 5 MB. Telefonlar Türk cep numarasına normalize edilir, aynı telefon dosyada bir kez alınır, mevcut personel güncellenir. Hatalı satırlar numaralarıyla bildirilir; mevcut ret kayıtları korunur. Müşteri kayıtları değiştirilmez.
 - Tüm personel, mağazalar veya tek tek kişiler seçilebilir. Devre dışı/ret kaydı bulunan kişiler dışlanır; ret listesi gönderim öncesinde yeniden kontrol edilir.
 - Bir PDF (100 MB sınır), ardından en fazla 10 MP4 (dosya başına 16 MB). Dosya imzaları kontrol edilir; MP4 için `ffprobe` H.264 video ve varsa AAC ses doğrular. Docker imajına ffmpeg eklendi.
 - Önizleme gerçek hedef listesini, sıralı dosyaları, şablon metinlerini, toplam alıcı/dosya/mesaj sayısını, ücretli mesaj tahminini ve üst sınırını gösterir. Önizleme 10 dakika geçerlidir; dosya veya alıcı/şablon değişirse yeniden hazırlanır.
