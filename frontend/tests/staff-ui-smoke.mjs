@@ -12,6 +12,13 @@ try{
  await page.getByRole('heading',{name:'Personel Duyuruları',exact:true}).waitFor();
  await page.getByLabel('PDF yükle').setInputFiles({name:'duyuru.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 staff ui')});
  await page.getByText('1. duyuru.pdf',{exact:false}).waitFor();
+ await page.getByRole('button',{name:'+ Yeni şablon hazırla',exact:true}).click();
+ await page.getByLabel(/^Şablon adı/).fill('hys_ui_belge_basvuru');
+ await page.getByLabel('Meta incelemesi için örnek dosya').selectOption({index:1});
+ await page.getByRole('button',{name:'Başvuruyu önizle',exact:true}).click();
+ await page.getByLabel('Bu şablonun simülasyon taslağı olarak kaydedilmesini onaylıyorum.').check();
+ await page.getByRole('button',{name:'Simülasyon taslağını kaydet',exact:true}).click();
+ await page.getByText('Simülasyon taslağı kaydedildi.',{exact:false}).waitFor();
  await page.getByLabel('Belge başlıklı onaylı şablon').selectOption({label:'hys_personel_document · tr'});
  await page.getByRole('button',{name:'Önizle',exact:true}).click();await page.getByText('1 personel · 1 dosya · 1 toplam mesaj',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Gönder · Simülasyon',exact:true}).click();await page.getByRole('button',{name:'Duraklat',exact:true}).waitFor();

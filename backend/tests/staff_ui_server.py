@@ -4,12 +4,12 @@ if os.environ.get('HYS_STAFF_UI_SANDBOX')!='1' or 'hys-ui-staff-' not in os.envi
 from sqlalchemy import select
 from app.core import *
 from app.main import app,ph
-from app import staff,meta
+from app import staff,meta,media_templates
 settings.dry_run=True
 settings.live_send_enabled=False
 settings.staff_upload_origin=''
 def forbidden(*args,**kwargs):raise AssertionError('No outbound Meta in staff UI tests')
-staff.graph=forbidden;staff.upload_media=forbidden;meta.graph=forbidden
+media_templates.graph=forbidden;media_templates.upload_template_sample=forbidden;staff.graph=forbidden;staff.upload_media=forbidden;meta.graph=forbidden
 with Session() as db:
     if not db.scalar(select(User.id)):
         db.add(User(username='uiadmin',password=ph.hash('UITestPassword123!'),role='admin'))

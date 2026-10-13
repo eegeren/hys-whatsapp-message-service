@@ -60,10 +60,10 @@ def upload_media(filename,content,content_type):
     return media_id
 
 
-def upload_template_sample(asset):
+def upload_template_sample(asset,kind="IMAGE"):
     """Resumable file handle for template approval, distinct from a sending media ID."""
     from app.template_components import validate_upload
-    validate_upload('IMAGE',asset)
+    validate_upload(kind,asset)
     session=graph('POST','app/uploads',params={'file_name':asset.filename,'file_length':len(asset.content),'file_type':asset.content_type})
     upload_id=session.get('id','')
     if not isinstance(upload_id,str) or not re.fullmatch(r'upload:[A-Za-z0-9_:=+-]+(?:\?sig=[A-Za-z0-9_.=-]+)?',upload_id):raise HTTPException(502,'Meta örnek görsel yükleme oturumu doğrulanamadı.')
