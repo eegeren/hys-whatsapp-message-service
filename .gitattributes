@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.xlsx -text
+*.xls -text
+*.png -text
+*.jpg -text
+*.mp4 -text

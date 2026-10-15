@@ -1,0 +1,15 @@
+{
+  "note": "Apply in Railway dashboard; a checklist, not a config-as-code file.",
+  "backend": {
+    "rootDirectory": "/", "dockerfile": "deploy/Dockerfile.railway",
+    "preDeployCommand": "alembic upgrade head", "startCommand": "python -m app.serve",
+    "healthcheckPath": "/api/ready", "healthcheckTimeoutSeconds": 120,
+    "replicas": 1, "volumeMount": "/data", "restartPolicy": "ON_FAILURE", "restartMaxRetries": 10
+  },
+  "worker": {
+    "rootDirectory": "/", "dockerfile": "deploy/Dockerfile.railway",
+    "startCommand": "python -m app.production_worker", "replicas": 1,
+    "publicNetworking": false, "serverlessSleeping": false,
+    "restartPolicy": "ON_FAILURE", "restartMaxRetries": 10
+  }
+}

@@ -1,0 +1,21 @@
+# HYS toplu mesaj kullanımı
+
+Toplu Mesaj ekranında Excel (.xlsx / .xls) veya CSV yükleyin. Telefon numarası sütunu yeterlidir. Türk cep telefonu numaraları +90 biçimine çevrilir; tamamen boş satırlar, mükerrer ve geçersiz numaralar ayıklanır. Sütun birden fazla aday içeriyorsa telefon sütununu seçin. En fazla 5 MB ve 10.000 dolu alıcı satırı desteklenir. Her gruptan ilk 200 alıcı arayüzde gösterilir; toplam sayılar bütün dosyayı kapsar.
+
+Alıcı dosyası izin verildiğinin kanıtı sayılmaz. Mevcut doğrulanmış izinler kullanılır. Eksik izinler için “Satış programındaki izinli numaraları eşleştir” bölümüne, satış programından yalnızca WhatsApp pazarlama ve ticari ileti izinleri doğrulanmış müşterileri içeren dışa aktarımı yükleyin. Yönetici dosyanın bu niteliğini bir kez doğrular. Telefon sütunu yeterlidir; izin tarihi/belgesi sütunları istenmez. Dosya özeti, yönetici ve aktarım zamanı denetim kaydına alınır. İçe aktarım zamanı gerçek izin tarihi olarak kaydedilmez. Satış programı veya İYS API’si otomatik sorgulanmış gibi gösterilmez.
+
+Ret, İPTAL ve engelleme kayıtları bütün müşteri/personel eşleşmelerinde korunur; izinli liste aktarımı bunları kaldırmaz. İzinler gönderim anında yeniden kontrol edilir.
+
+Şablonlar Meta’dan yenilenir. Yalnızca APPROVED / MARKETING şablonları seçilebilir. Değişkenler normal metin kutularına yazılır. IMAGE veya VIDEO başlıklı toplu şablonlarda JPG/PNG/MP4 dosyası veya herkese açık HTTPS medya bağlantısı kullanılabilir. Dosya seçimi yalnızca tarayıcıda önizleme oluşturur. Alıcı önizlemesini açmak dosyayı yalnızca yerel, Git’ten hariç .bulk-media klasörüne kaydeder; Meta çağrısı yapmaz. Gönder onayından sonra dosya bir kez Meta’ya yüklenir; bütün izinli alıcılarda aynı medya kimliği kullanılır. Yükleme başarısızsa hiçbir alıcı kuyruğa eklenmez. Başarılı yüklemeden sonra yerel dosya kaldırılır. Yükleme sırasında iptal edilen kampanya gönderime başlamaz. Tamamlanmamış taslakların yerel dosyaları silinmediği için 512 MB alan sınırı uygulanır; eski taslakları kullanmayacaksanız bu dosyaları manuel temizleyebilirsiniz.
+
+“Alıcıları ve mesajı kontrol et” sadece taslak ve onay ekranı oluşturur; mesaj göndermez. Alıcılar, doldurulmuş şablon, toplam sayı ve ücret bilgisi bu ekranda görünür. Tarife kaynağı bağlı olmadığı için ücret bilinmiyor olarak gösterilir; sıfır ücret varsayılmaz.
+
+İsteğe bağlı tek numara denemesi canlı modda gerçek mesajdır ve ayrıca kullanıcı onayı ister. Deneme alıcısı izinli yüklenen listede bulunmalıdır. Toplu aşamada bu numara tekrar gönderilmez; belirsiz veya başarısız deneme de otomatik yeniden hedeflenmez. Deneme kuyruğu tamamlandıktan sonra toplu aşama için Gönder onayı gerekir.
+
+Gönder düğmesi yalnızca yetkili yönetici onayıyla kuyruğu başlatır. Yeni toplu akışta tek yönetici onayı yeterlidir; eski kampanya uç noktalarının iki yönetici kuralı korunur. Production numarası/WABA ve şablon tanımı taslağa bağlanır; sonradan değişirse eski taslak gönderilemez. DRY_RUN ve LIVE_SEND_ENABLED mevcut ortam değerlerinden okunur ve bu akış tarafından değiştirilmez.
+
+Kuyruk küresel olarak saniyede en fazla bir API gönderim isteği yapar. Günlük muhafazakâr üst sınır BULK_DAILY_LIMIT ile belirlenir (varsayılan 10.000 deneme; Meta daha düşük sınır uygularsa onun hata cevabı geçerlidir). Kesin reddedilmiş hız sınırı yanıtları en fazla beş denemeyle artan bekleme sonrası tekrar edilir. Zaman aşımı, sunucu hatası veya sonucu bilinmeyen çağrılar tekrar edilmez. Çift tıklama, aynı kampanyada mükerrer alıcı, devam ettirme ve aynı worker işinin tekrar çalışması kabul edilmiş mesajları yeniden göndermez. Meta genel bir tam olarak bir kez teslim garantisi sağlamaz.
+
+API kabulü, gönderildi, teslim edildi, okundu ve başarısız ayrı durumlardır. Gönderildi/teslim/okundu gerçek imzalı webhook kayıtlarından gelir. Duraklat ve Durdur sadece henüz Meta’ya gitmemiş işleri etkiler; başlamış API çağrısı veya kabul edilen mesaj geri alınamaz. Başarısız/engelli/belirsiz alıcılar hata açıklaması ve mevcut Meta kimliğiyle Excel’e aktarılabilir.
+
+Yerel kurulumda API yanında app.worker çalıştırılır; Docker kurulumunda mevcut Celery worker/beat kullanılır. Veritabanı veya sırlar silinmez. Yeni veri tablosu/migrasyon gerekmemektedir.

@@ -1,0 +1,17 @@
+# Optional HTTPS ingress; requires actual DNS + reachable ports 80/443.
+services:
+  webhook_proxy:
+    image: caddy:2-alpine
+    environment:
+      HYS_WEBHOOK_DOMAIN: ${HYS_WEBHOOK_DOMAIN:?Set your real webhook DNS name in .env}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - webhook_tls:/data
+      - webhook_config:/config
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  webhook_tls:
+  webhook_config:
