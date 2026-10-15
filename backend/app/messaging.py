@@ -14,12 +14,13 @@ from app.main import app, actor, admin, db_session, serial, require, connection_
 from app.meta import graph,upload_media
 from app.template_components import build_template,definitions,MEDIA_TYPES,MediaUpload,validate_upload
 from app.contacts import safe_cell
+from app.operations_access import phone_clause,authorize_phone,guard_direct,guard_message
 
 def conversation_key(value:str):return hashlib.sha256(value.encode()).hexdigest()
 
 @app.get('/api/conversations')
 def conversations(user=Depends(actor),db=Depends(db_session)):
-    rows=db.scalars(select(Message).order_by(Message.created.desc(),Message.id.desc()).limit(10000)).all()
+    rows=db.scalars(select(Message).where(phone_clause(db,user,Message.phone)).order_by(Message.created.desc(),Message.id.desc()).limit(10000)).all()
     grouped={}
     for m in rows:
         item=grouped.get(m.phone)
@@ -28,7 +29,8 @@ def conversations(user=Depends(actor),db=Depends(db_session)):
             grouped[m.phone]=item
         if m.direction=='in':item['last_incoming_id']=max(item['last_incoming_id'],m.id)
         if m.direction=='in' and m.unread:item['unread']+=1
-    return sorted(grouped.values(),key=lambda x:x['last_at'],reverse=True)
+    from app.operations import decorate_conversations
+    return decorate_conversations(db,user,sorted(grouped.values(),key=lambda x:x['last_at'],reverse=True))
 
 def verified_whatsapp_consent(contacts):
     return any(c.active and c.preference=='whatsapp' and c.consent=='verified' and
@@ -39,6 +41,8 @@ def verified_whatsapp_consent(contacts):
 def conversation_eligibility(phone_number:str,user=Depends(actor),db=Depends(db_session)):
     try: recipient=phone(phone_number)
     except ValueError as e: raise HTTPException(422,str(e))
+    case=authorize_phone(db,user,recipient)
+    can_manage=user.role=='admin' or not case or case.assignee_id in (None,user.id)
     contacts=db.scalars(select(Contact).where(Contact.phone==recipient)).all()
     opted_out=any(c.opted_out for c in contacts)
     last_in=db.scalar(select(func.max(Message.created)).where(Message.phone==recipient,Message.direction=='in'))
@@ -46,24 +50,26 @@ def conversation_eligibility(phone_number:str,user=Depends(actor),db=Depends(db_
     service_window=bool(age and timedelta(0)<=age<timedelta(hours=24))
     sender_ready=bool(not settings.dry_run and settings.live_send_enabled and settings.meta_waba_id and connection_ok(db))
     if opted_out: reason='Bu numara iletişim reddi verdi; engelleme listesinde ve gönderim kapalı.'
+    elif not can_manage: reason='Bu sohbet başka personele atanmış; sorumlu personel veya yönetici gönderim yapabilir.'
     elif not sender_ready: reason='Meta canlı gönderimi şu anda kapalı veya bağlantı doğrulanmamış.'
     elif not service_window: reason='İlk mesaj için onaylı Meta şablonu seçin. Serbest metin için son 24 saatte gelen mesaj gerekir.'
     else: reason=''
     audit(db,user.username,'direct_message_eligibility',mask(recipient));db.commit()
     return {'phone':recipient,'contact_found':bool(contacts),
             'opted_out':opted_out,'service_window_open':service_window,
-            'template_required':not service_window,'template_allowed':bool(not opted_out and sender_ready),
-            'text_allowed':bool(not opted_out and sender_ready and service_window),
+            'template_required':not service_window,'template_allowed':bool(can_manage and not opted_out and sender_ready),
+            'text_allowed':bool(can_manage and not opted_out and sender_ready and service_window),
             'sender_ready':sender_ready,
-            'allowed':bool(not opted_out and sender_ready and service_window),
+            'allowed':bool(can_manage and not opted_out and sender_ready and service_window),
             'blocked_reason':reason}
 
 @app.get('/api/conversations/{key}')
 def conversation_detail(key:str,page:int=1,user=Depends(actor),db=Depends(db_session)):
     if not re.fullmatch(r'[a-f0-9]{64}',key):raise HTTPException(404,'Konuşma bulunamadı')
-    rows=db.scalars(select(Message).order_by(Message.created.desc(),Message.id.desc()).limit(10000)).all()
+    rows=db.scalars(select(Message).where(phone_clause(db,user,Message.phone)).order_by(Message.created.desc(),Message.id.desc()).limit(10000)).all()
     phone_value=next((m.phone for m in rows if conversation_key(m.phone)==key),None)
     if phone_value is None:raise HTTPException(404,'Konuşma bulunamadı')
+    authorize_phone(db,user,phone_value)
     items=db.scalars(select(Message).where(Message.phone==phone_value).order_by(Message.created.desc(),Message.id.desc()).offset((max(1,page)-1)*100).limit(100)).all()
     items=list(reversed(items));audit(db,user.username,'conversation_access',key[:12]);db.commit()
     from app.incoming_media import incoming_content
@@ -78,6 +84,7 @@ def read_conversation(key:str,data:ConversationRead,user=Depends(actor),db=Depen
     # Bound to the last displayed incoming message; a concurrent new message stays unread.
     row=db.get(Message,data.through_id)
     if not row or row.direction!='in' or conversation_key(row.phone)!=key:raise HTTPException(404,'Gelen mesaj bu konuşmada bulunamadı.')
+    authorize_phone(db,user,row.phone)
     from sqlalchemy import update
     result=db.execute(update(Message).where(Message.phone==row.phone,Message.direction=='in',Message.unread==True,Message.id<=data.through_id).values(unread=False))
     remaining=db.scalar(select(func.count(Message.id)).where(Message.phone==row.phone,Message.direction=='in',Message.unread==True))
@@ -89,6 +96,7 @@ class ConversationOpen(BaseModel):phone:str=Field(min_length=8,max_length=20)
 def open_conversation(data:ConversationOpen,user=Depends(actor),db=Depends(db_session)):
     try:value=phone(data.phone)
     except ValueError as e:raise HTTPException(422,str(e))
+    authorize_phone(db,user,value)
     audit(db,user.username,'conversation_open',mask(value));db.commit()
     return {'key':conversation_key(value),'phone':value,'items':[]}
 
@@ -115,11 +123,11 @@ class DirectMessage(BaseModel):
     button_variables:dict[str,str]=Field(default_factory=dict,max_length=10)
     header_media:HeaderMedia|None=None
 
-@app.post('/api/conversations/send')
+@app.post('/api/conversations/send',dependencies=[Depends(guard_direct)])
 def send_conversation_message(data:DirectMessage,user=Depends(actor),db=Depends(db_session)):
     return send_direct_message(data,user,db)
 
-@app.post('/api/conversations/send-with-media')
+@app.post('/api/conversations/send-with-media',dependencies=[Depends(guard_direct)])
 def send_conversation_media(data:str=Form(...,max_length=100000),file:UploadFile=File(...),user=Depends(actor),db=Depends(db_session)):
     try:
         if settings.dry_run:raise HTTPException(403,'DRY_RUN açık: gerçek WhatsApp gönderimi şu anda kapalı.')
@@ -224,7 +232,7 @@ def send_direct_message(data,user,db,upload=None):
 
 @app.get('/api/messages')
 def messages(direction:str='',status:str='',unread:bool=False,review:bool=False,unmatched:bool=False,page:int=1,user=Depends(actor),db=Depends(db_session)):
-    stmt=select(Message)
+    stmt=select(Message).where(phone_clause(db,user,Message.phone))
     if direction:stmt=stmt.where(Message.direction==direction)
     if status:stmt=stmt.where(Message.status==status)
     if unread:stmt=stmt.where(Message.unread==True)
@@ -234,11 +242,11 @@ def messages(direction:str='',status:str='',unread:bool=False,review:bool=False,
     rows=db.scalars(stmt.order_by(Message.id.desc()).offset((max(1,page)-1)*50).limit(50)).all()
     audit(db,user.username,'message_access',str(page));db.commit()
     return {'total':count,'items':[{**serial(m),'phone':mask(m.phone)} for m in rows]}
-@app.post('/api/messages/{id}/read')
+@app.post('/api/messages/{id}/read',dependencies=[Depends(guard_message)])
 def mark_read(id:int,user=Depends(actor),db=Depends(db_session)):
     m=require(db,Message,id);m.unread=False;db.commit();return {'ok':True}
 class ReplyInput(BaseModel):body:str=Field(min_length=1,max_length=4096)
-@app.post('/api/messages/{id}/reply')
+@app.post('/api/messages/{id}/reply',dependencies=[Depends(guard_message)])
 def reply(id:int,data:ReplyInput,user=Depends(actor),db=Depends(db_session)):
     incoming=require(db,Message,id)
     if incoming.direction!='in':raise HTTPException(422,'Gelen mesaj seçin')

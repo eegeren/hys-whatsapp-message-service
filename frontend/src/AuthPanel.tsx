@@ -1,3 +1,4 @@
+import {MIN_PASSWORD_LENGTH} from './passwordPolicy';
 import BrandLogo from './BrandLogo';
 import PasswordInput from './PasswordInput';
 import {useState} from 'react';
@@ -43,7 +44,7 @@ export default function AuthPanel({setup,initialError,api,onLogin,onSetup}:Props
    <form key={register?'register':'login'} onSubmit={submit}>
     <div className="form-grid">
      <label className="field"><span>Kullanıcı adı *</span><input name="username" required minLength={3} maxLength={100} autoComplete="username"/></label>
-     <PasswordInput name="password" label="Parola" minLength={register?7:3} autoComplete={register?'new-password':'current-password'} hint={register?'En az 7 karakter kullanın.':undefined}/>
+     <PasswordInput name="password" label="Parola" minLength={register?MIN_PASSWORD_LENGTH:3} autoComplete={register?'new-password':'current-password'} hint={register?'En az 6 karakter kullanın.':undefined}/>
      {first&&setup?.bootstrap_required&&<label className="field"><span>Kurulum anahtarı *</span><input name="bootstrap_token" type="password" required autoComplete="off"/></label>}
      {register&&!first&&<>
       <label className="field"><span>Yönetici kullanıcı adı *</span><input name="admin_username" required autoComplete="off"/></label>

@@ -52,7 +52,9 @@ def actor(request:Request,db=Depends(db_session)):
     if not session or session.expires<now():raise HTTPException(401,'Oturum açmanız gerekiyor')
     if request.method not in ('GET','HEAD') and request.headers.get('X-HYS-Request')!='1':raise HTTPException(403,'İstek doğrulanamadı')
     user=db.get(User,session.user_id)
-    if not user or user.role not in ('admin','operator'):raise HTTPException(401,'Yetkili kullanıcı bulunamadı')
+    if not user or not user.active or user.role not in ('admin','operator'):raise HTTPException(401,'Yetkili kullanıcı bulunamadı')
+    scope=db.get(OperatorScope,user.id) if user.role!='admin' else None
+    if scope and not scope.unrestricted and request.url.path.startswith(('/api/campaigns','/api/bulk/campaign','/api/bulk/preview','/api/import/customer','/api/reports')):raise HTTPException(403,'Mağaza kapsamlı personel hesabında genel kampanya ve rapor erişimi yöneticiye aittir.')
     return user
 def admin(user=Depends(actor)):
     if user.role!='admin':raise HTTPException(403,'Yönetici yetkisi gerekiyor')
@@ -97,7 +99,7 @@ def login(data:Credentials,request:Request,response:Response,db=Depends(db_sessi
     db.merge(SystemValue(key=key,value=json.dumps([count+1,stamp])));db.commit()
     user=db.scalar(select(User).where(User.username==data.username))
     try:
-        if not user:raise ValueError()
+        if not user or not user.active:raise ValueError()
         ph.verify(user.password,data.password)
     except Exception:raise HTTPException(401,'Kullanıcı adı veya parola hatalı')
     token=secrets.token_urlsafe(48)
@@ -128,12 +130,14 @@ def add_user(data:NewUser,user=Depends(admin),db=Depends(db_session)):
     return {'ok':True}
 @app.get('/api/users')
 def list_users(user=Depends(admin),db=Depends(db_session)):
-    return [{'id':u.id,'username':u.username,'display_name':u.display_name or u.username,'role':u.role} for u in db.scalars(select(User).order_by(User.username)).all()]
+    return [{'id':u.id,'username':u.username,'display_name':u.display_name or u.username,'role':u.role} for u in db.scalars(select(User).where(User.active==True).order_by(User.username)).all()]
 @app.get('/api/dashboard')
 def dashboard(user=Depends(actor),db=Depends(db_session)):
-    contacts=db.scalars(select(Contact)).all()
-    statuses=dict(db.execute(select(Message.status,func.count(Message.id)).where(Message.direction=='out').group_by(Message.status)).all())
-    return {'customers':sum(c.kind=='customer' for c in contacts),'eligible':sum(c.kind=='customer' and eligible(c) for c in contacts),'staff':sum(c.kind=='staff' for c in contacts),'stores':db.scalar(select(func.count(Store.id))),'today':db.scalar(select(func.count(Message.id)).where(Message.created>=today_start(),Message.direction=='out',Message.status.in_(['accepted','sent','delivered','read']))),'statuses':statuses,'active':db.scalar(select(func.count(Campaign.id)).where(Campaign.status.in_(['running','scheduled']))),'pending_staff':db.scalar(select(func.count(Campaign.id)).where(Campaign.kind=='staff',Campaign.status.in_(['draft','scheduled']))),'connection':connection_ok(db),'dry_run':settings.dry_run,'cost':None}
+    from app.operations_access import phone_clause,allowed_store,scope_for
+    scope=scope_for(db,user);restricted=scope is not None and not scope.unrestricted
+    contacts=db.scalars(select(Contact).where(phone_clause(db,user,Contact.phone))).all()
+    statuses=dict(db.execute(select(Message.status,func.count(Message.id)).where(Message.direction=='out',phone_clause(db,user,Message.phone)).group_by(Message.status)).all())
+    return {'customers':sum(c.kind=='customer' for c in contacts),'eligible':sum(c.kind=='customer' and eligible(c) for c in contacts),'staff':sum(c.kind=='staff' for c in contacts),'stores':sum(allowed_store(db,user,s.id) for s in db.scalars(select(Store))),'today':db.scalar(select(func.count(Message.id)).where(Message.created>=today_start(),phone_clause(db,user,Message.phone),Message.direction=='out',Message.status.in_(['accepted','sent','delivered','read']))),'statuses':statuses,'active':None if restricted else db.scalar(select(func.count(Campaign.id)).where(Campaign.status.in_(['running','scheduled']))),'pending_staff':None if restricted else db.scalar(select(func.count(Campaign.id)).where(Campaign.kind=='staff',Campaign.status.in_(['draft','scheduled']))),'connection':connection_ok(db),'dry_run':settings.dry_run,'cost':None}
 @app.get('/api/health')
 def health(db=Depends(db_session)):
     db.execute(select(1));return {'ok':True,'dry_run':settings.dry_run}
@@ -156,6 +160,6 @@ def worker_health(user=Depends(admin)):
     except Exception:raise HTTPException(503,'Worker bağlantısı doğrulanamadı.')
     return {'healthy':bool(heartbeat),'dispatch_enabled':settings.bulk_dispatch_enabled,'deployment_send_lock':settings.deployment_send_lock}
 
-from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates, staff, media_templates, video_jobs, incoming_media, quick_replies
+from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates, staff, media_templates, video_jobs, incoming_media, quick_replies, staff_accounts, operations
 web=Path(__file__).resolve().parents[1]/'web'
 if web.exists():app.mount('/',StaticFiles(directory=str(web),html=True),name='web')

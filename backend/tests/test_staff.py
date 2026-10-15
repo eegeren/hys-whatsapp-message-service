@@ -173,7 +173,7 @@ def test_additive_migration_preserves_existing_data(tmp_path):
     subprocess.run([sys.executable,'-m','alembic','upgrade','head'],env=env,cwd=__import__('pathlib').Path(__file__).resolve().parents[1],check=True,capture_output=True)
     with e.connect() as c:
         assert c.execute(text("SELECT value FROM system_values WHERE key='sentinel'")).scalar()=='preserved'
-        assert c.execute(text('SELECT version_num FROM alembic_version')).scalar()=='006'
+        assert c.execute(text('SELECT version_num FROM alembic_version')).scalar()=='008'
     assert {'contacts','messages','campaigns','staff_announcements','staff_assets','staff_deliveries'}<=set(inspect(e).get_table_names())
 
 def test_large_audience_status_pagination(client,prepared):

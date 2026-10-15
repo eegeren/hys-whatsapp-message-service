@@ -23,6 +23,9 @@ class ContactInput(BaseModel):
 @app.get('/api/contacts/{kind}')
 def contacts(kind:str,q:str='',city:str='',store:str='',group:str='',consent:str='',page:int=1,user=Depends(actor),db=Depends(db_session)):
     stmt=select(Contact).where(Contact.kind==kind)
+    if kind=='customer':
+        from app.operations_access import phone_clause
+        stmt=stmt.where(phone_clause(db,user,Contact.phone))
     if q:stmt=stmt.where(or_(Contact.first_name.ilike(f'%{q}%'),Contact.last_name.ilike(f'%{q}%'),Contact.phone.ilike(f'%{q}%')))
     for field,value in [(Contact.city,city),(Contact.store,store),(Contact.group,group),(Contact.consent,consent)]:
         if value:stmt=stmt.where(field==value)
@@ -37,6 +40,10 @@ def create_contact(kind:str,data:ContactInput,user=Depends(actor),db=Depends(db_
     try:values['phone']=phone(values['phone'])
     except ValueError as e:raise HTTPException(422,str(e))
     if db.scalar(select(Contact.id).where(Contact.kind==kind,Contact.phone==values['phone'])):raise HTTPException(409,'Telefon zaten kayıtlı')
+    if kind=='customer':
+        from app.operations_access import allowed_store
+        store_id=db.scalar(select(Store.id).where(Store.name==values.get('store','')))
+        if not allowed_store(db,user,store_id):raise HTTPException(403,'Bu mağazaya müşteri ekleme yetkiniz yok.')
     c=Contact(kind=kind,**values);db.add(c);audit(db,user.username,'contact_create',kind);db.commit();return {'id':c.id}
 @app.put('/api/contact/{id}')
 def edit_contact(id:int,data:ContactInput,user=Depends(admin),db=Depends(db_session)):
@@ -140,7 +147,9 @@ def export_contacts(kind:str,user=Depends(admin),db=Depends(db_session)):
     buf=io.BytesIO();wb.save(buf);buf.seek(0);audit(db,user.username,'export',kind);db.commit()
     return StreamingResponse(buf,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="{kind}.xlsx"'})
 @app.get('/api/stores')
-def stores(user=Depends(actor),db=Depends(db_session)):return [serial(s) for s in db.scalars(select(Store).order_by(Store.name))]
+def stores(user=Depends(actor),db=Depends(db_session)):
+    from app.operations_access import allowed_store
+    return [serial(s) for s in db.scalars(select(Store).order_by(Store.name)) if allowed_store(db,user,s.id)]
 class StoreInput(BaseModel):
     name:str=Field(min_length=1,max_length=160)
     city:str=''

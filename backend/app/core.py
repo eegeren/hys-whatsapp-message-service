@@ -13,7 +13,7 @@ if os.environ.get('RAILWAY_ENVIRONMENT_ID'):
     os.environ.setdefault('DEPLOYMENT_SEND_LOCK', 'true')
     os.environ.setdefault('BULK_DISPATCH_ENABLED', 'false')
 
-MIN_PASSWORD_LENGTH = 7
+MIN_PASSWORD_LENGTH = 6
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./hys-local.db"
@@ -95,6 +95,7 @@ class User(Base):
     password: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20), default="operator")
     display_name: Mapped[str] = mapped_column(String(100),default="")
+    active: Mapped[bool] = mapped_column(Boolean,default=True)
 class QuickReply(Base):
     __tablename__ = 'quick_replies'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -170,6 +171,8 @@ class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (UniqueConstraint("campaign_id", "contact_id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
+    sender_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"),nullable=True,index=True)
+    operation_store_id: Mapped[int | None] = mapped_column(ForeignKey("stores.id"),nullable=True)
     campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True)
     contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), nullable=True)
     phone: Mapped[str] = mapped_column(String(20))
@@ -297,3 +300,41 @@ class VideoJob(Base):
     created: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
     expires: Mapped[datetime] = mapped_column(DateTime)
+
+# Additive operations records. Legacy messages and conversations are never backfilled.
+class ConversationOps(Base):
+    __tablename__='conversation_ops'
+    key: Mapped[str]=mapped_column(String(64),primary_key=True)
+    phone: Mapped[str]=mapped_column(String(20),unique=True)
+    assignee_id: Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True,index=True)
+    status: Mapped[str|None]=mapped_column(String(30),nullable=True,index=True)
+    store_id: Mapped[int|None]=mapped_column(ForeignKey('stores.id'),nullable=True,index=True)
+    store_linked: Mapped[bool]=mapped_column(Boolean,default=False)
+    customer_name: Mapped[str|None]=mapped_column(String(200),nullable=True)
+    tags: Mapped[str]=mapped_column(Text,default='[]')
+    version: Mapped[int]=mapped_column(Integer,default=0)
+    updated: Mapped[datetime]=mapped_column(DateTime,default=now)
+class InternalNote(Base):
+    __tablename__='internal_notes'
+    id: Mapped[int]=mapped_column(primary_key=True)
+    conversation_key: Mapped[str]=mapped_column(ForeignKey('conversation_ops.key'),index=True)
+    author_id: Mapped[int]=mapped_column(ForeignKey('users.id'))
+    body: Mapped[str]=mapped_column(Text)
+    created: Mapped[datetime]=mapped_column(DateTime,default=now)
+    deleted: Mapped[bool]=mapped_column(Boolean,default=False)
+class OperationEvent(Base):
+    __tablename__='operation_events'
+    id: Mapped[int]=mapped_column(primary_key=True)
+    actor_id: Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True,index=True)
+    action: Mapped[str]=mapped_column(String(60),index=True)
+    conversation_key: Mapped[str|None]=mapped_column(String(64),nullable=True,index=True)
+    store_id: Mapped[int|None]=mapped_column(ForeignKey('stores.id'),nullable=True)
+    old_value: Mapped[str]=mapped_column(Text,default='{}')
+    new_value: Mapped[str]=mapped_column(Text,default='{}')
+    created: Mapped[datetime]=mapped_column(DateTime,default=now,index=True)
+class OperatorScope(Base):
+    __tablename__='operator_scopes'
+    user_id: Mapped[int]=mapped_column(ForeignKey('users.id'),primary_key=True)
+    store_ids: Mapped[str]=mapped_column(Text,default='[]')
+    include_unassigned: Mapped[bool]=mapped_column(Boolean,default=False)
+    unrestricted: Mapped[bool]=mapped_column(Boolean,default=False)

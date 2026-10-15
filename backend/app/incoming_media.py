@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.core import Message,WebhookItem,settings,audit
 from app.main import app,actor,db_session
 from app.meta import graph
+from app.operations_access import guard_media
 
 log=logging.getLogger(__name__)
 MEDIA_KINDS={'audio','image','video','document','sticker'}
@@ -32,7 +33,7 @@ def incoming_content(item):
 def event_for(db,message):
     return db.scalar(select(WebhookItem).where(WebhookItem.kind=='message',WebhookItem.meta_id==message.meta_id)) if message.meta_id else None
 
-@app.get('/api/messages/{message_id}/media')
+@app.get('/api/messages/{message_id}/media',dependencies=[Depends(guard_media)])
 def incoming_attachment(message_id:int,request:Request,download:bool=False,user=Depends(actor),db=Depends(db_session)):
     message=db.get(Message,message_id)
     if not message or message.direction!='in':raise HTTPException(404,'Gelen dosya bulunamadı.')
