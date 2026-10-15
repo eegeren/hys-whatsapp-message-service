@@ -52,7 +52,7 @@ def actor(request:Request,db=Depends(db_session)):
     if not session or session.expires<now():raise HTTPException(401,'Oturum açmanız gerekiyor')
     if request.method not in ('GET','HEAD') and request.headers.get('X-HYS-Request')!='1':raise HTTPException(403,'İstek doğrulanamadı')
     user=db.get(User,session.user_id)
-    if not user or user.role not in ('admin','operator'):raise HTTPException(401,'Yetkili kullanıcı bulunamadı')
+    if not user or not user.active or user.role not in ('admin','operator'):raise HTTPException(401,'Yetkili kullanıcı bulunamadı')
     return user
 def admin(user=Depends(actor)):
     if user.role!='admin':raise HTTPException(403,'Yönetici yetkisi gerekiyor')
@@ -97,7 +97,7 @@ def login(data:Credentials,request:Request,response:Response,db=Depends(db_sessi
     db.merge(SystemValue(key=key,value=json.dumps([count+1,stamp])));db.commit()
     user=db.scalar(select(User).where(User.username==data.username))
     try:
-        if not user:raise ValueError()
+        if not user or not user.active:raise ValueError()
         ph.verify(user.password,data.password)
     except Exception:raise HTTPException(401,'Kullanıcı adı veya parola hatalı')
     token=secrets.token_urlsafe(48)
@@ -128,7 +128,7 @@ def add_user(data:NewUser,user=Depends(admin),db=Depends(db_session)):
     return {'ok':True}
 @app.get('/api/users')
 def list_users(user=Depends(admin),db=Depends(db_session)):
-    return [{'id':u.id,'username':u.username,'display_name':u.display_name or u.username,'role':u.role} for u in db.scalars(select(User).order_by(User.username)).all()]
+    return [{'id':u.id,'username':u.username,'display_name':u.display_name or u.username,'role':u.role} for u in db.scalars(select(User).where(User.active==True).order_by(User.username)).all()]
 @app.get('/api/dashboard')
 def dashboard(user=Depends(actor),db=Depends(db_session)):
     contacts=db.scalars(select(Contact)).all()
@@ -156,6 +156,6 @@ def worker_health(user=Depends(admin)):
     except Exception:raise HTTPException(503,'Worker bağlantısı doğrulanamadı.')
     return {'healthy':bool(heartbeat),'dispatch_enabled':settings.bulk_dispatch_enabled,'deployment_send_lock':settings.deployment_send_lock}
 
-from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates, staff, media_templates, video_jobs, incoming_media, quick_replies
+from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates, staff, media_templates, video_jobs, incoming_media, quick_replies, staff_accounts
 web=Path(__file__).resolve().parents[1]/'web'
 if web.exists():app.mount('/',StaticFiles(directory=str(web),html=True),name='web')

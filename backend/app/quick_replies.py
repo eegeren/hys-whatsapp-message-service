@@ -30,7 +30,7 @@ def update_profile(data:ProfileInput,user=Depends(actor),db=Depends(db_session))
     return profile(user)
 @app.get('/api/quick-replies/users')
 def reply_users(user=Depends(admin),db=Depends(db_session)):
-    return [profile(u) for u in db.scalars(select(User).order_by(User.username)).all()]
+    return [profile(u) for u in db.scalars(select(User).where(User.active==True).order_by(User.username)).all()]
 
 class ReplyInput(BaseModel):
     title:str=Field(min_length=1,max_length=100)
@@ -67,7 +67,9 @@ def replies(manage:bool=False,user=Depends(actor),db=Depends(db_session)):
     return [describe(r,user) for r in db.scalars(stmt).all()]
 
 def check_owner(db,owner_id):
-    if owner_id is not None and not db.get(User,owner_id):raise HTTPException(422,'Seçilen personel bulunamadı.')
+    if owner_id is not None:
+        owner=db.get(User,owner_id)
+        if not owner or not owner.active:raise HTTPException(422,'Seçilen personel bulunamadı.')
 @app.post('/api/quick-replies',status_code=201)
 def create_reply(data:ReplyInput,user=Depends(admin),db=Depends(db_session)):
     check_owner(db,data.owner_id);row=QuickReply(**data.model_dump());db.add(row);db.flush();db.execute(update(QuickReply).where(QuickReply.category==data.category).values(category_order=data.category_order));audit(db,user.username,'quick_reply_create',str(row.id));db.commit()

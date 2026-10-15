@@ -95,6 +95,7 @@ class User(Base):
     password: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20), default="operator")
     display_name: Mapped[str] = mapped_column(String(100),default="")
+    active: Mapped[bool] = mapped_column(Boolean,default=True)
 class QuickReply(Base):
     __tablename__ = 'quick_replies'
     id: Mapped[int] = mapped_column(primary_key=True)

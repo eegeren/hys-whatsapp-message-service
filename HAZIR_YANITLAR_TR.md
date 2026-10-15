@@ -47,3 +47,11 @@ Konuşma görünür, odakta ve son mesajlara kaydırılmış olduğunda yüklene
 Gelen kutusu diğer bölümlerdeyken de yeni mesajları beş saniyelik aralıklarla kontrol eder. İlk yükleme sessizdir; yalnızca yeni gelen mesaj kimliği ilerlediğinde kısa ve düşük sesli Web Audio bildirimi çalar. Giden mesajlar ve teslimat güncellemeleri ses üretmez. Tarayıcının ses politikası gereği ilk kullanıcı tıklaması/klavye etkileşiminden sonra etkinleşir. Üst çubuktaki ses düğmesi tercihi bu tarayıcıda saklar.
 
 Başarı bildirimi beş, hata bildirimi on iki saniyede kapanır. Kullanıcı okurken üzerine gelme/odak süresince sayaç durur; bildirim kartı veya kapatma düğmesi tıklanınca kapanır.
+
+## Düzenli ayarlar ve personel hesabı işlemleri
+
+Ayarlar altı bölüme ayrılır: Profilim, Ekip hesapları, Hazır yanıtlar, Meta bağlantısı, Meta şablonları, Gelişmiş. Destek personeline yalnızca yetkili olduğu profil/bağlantı/Meta şablonu bölümleri gösterilir. Webhook ve geliştirici araçları Gelişmiş bölümündedir. Sekmeler arasında düzenlenmekte olan form taslakları korunur; bu taslaklar sayfa yenilendiğinde kaydedilmiş sayılmaz.
+
+Yönetici Ekip hesaplarında destek personelinin adını ve kullanıcı adını düzenleyebilir, yeni parola belirleyebilir veya hesabı silebilir. Bu bölümden yönetici hesapları değiştirilemez. Parola sıfırlama mevcut oturumların tamamını geçersiz kılar; eski parola artık çalışmaz. Parola veya hash yanıtlara ve denetim kaydına yazılmaz.
+
+Migration **007**, `users.active` alanını ekler ve mevcut hesapları aktif bırakır. Silme, hesabı pasif yapar ve oturumlarını siler; kişi artık giriş yapamaz ve hesap listesinden çıkar. Eski mesajlar, denetim kayıtları ve kişisel hazır yanıtların sahiplik bağlantıları korunur. Silinen kullanıcı adı geçmiş kayıtları korumak için tekrar kullanılamaz. DELETE `/api/users/{id}`, PUT `/api/users/{id}`, POST `/api/users/{id}/password` yalnızca yöneticilere açıktır. Üretimde API ve worker yeni sürümle başlamadan önce mevcut pre-deploy `alembic upgrade head` adımı 007'ye ulaşmalıdır.
