@@ -66,3 +66,5 @@ Doğrulama sonucu: 281 backend testi, 3 Vercel yapılandırma testi ve TypeScrip
 ## Panelden şablon başvurusu
 
 Personel Duyuruları → Belge ve video şablonları → Yeni şablon hazırla. Duyuru taslağına yüklenen PDF/MP4 dosyasını örnek olarak seçin, Türkçe sabit metni ve kategoriyi düzenleyin, WhatsApp önizlemesini kontrol edip başvuruyu onaylayın. `DRY_RUN=true` yalnızca yerel taslak kaydeder. Gerçek başvuru için `DRY_RUN=false`, `META_ENVIRONMENT=production` ve doğrulanmış Meta bağlantısı gerekir. Mesaj gönderim kilitleri açılmadan da şablon başvurusu yapılabilir; bu işlem alıcılara mesaj göndermez. Onay kararını Meta verir. Durum yenile düğmesi mevcut Meta şablon senkronizasyonunu kullanır. Başvuru sonucu belirsizse aynı adla tekrar başvuru yapılmaz. Şablon metni, kategori ve örnek dosya incelemeye gönderilmeden önce panelde açık onay gerekir.
+
+Video otomatik dönüştürme güncellemesi: aktif migration head artık `005`. Yeni video işleme, hata teşhisi ve Railway kurulum ayrıntıları `VIDEO_ISLEME_TR.md` belgesindedir.

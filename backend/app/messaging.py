@@ -1,4 +1,6 @@
 import json, hmac, hashlib, io, time
+from pathlib import Path
+from app.video_processing import VIDEO_EXTENSIONS
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Request, File, Form, UploadFile
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -84,6 +86,7 @@ class CarouselCardInput(BaseModel):
     header_media:HeaderMedia|None=None
 
 class DirectMessage(BaseModel):
+    video_job_id:str|None=Field(default=None,max_length=36)
     cards:list[CarouselCardInput]=Field(default_factory=list,max_length=10)
     phone:str|None=Field(default=None,min_length=8,max_length=20)
     conversation_key:str|None=Field(default=None,min_length=64,max_length=64)
@@ -107,18 +110,28 @@ def send_conversation_media(data:str=Form(...,max_length=100000),file:UploadFile
         try:message=DirectMessage.model_validate_json(data)
         except ValidationError:raise HTTPException(422,'Mesaj alanları geçersiz; şablon ve değişkenleri kontrol edin.')
         if message.template_id is None:
-            kind='IMAGE' if file.content_type in ('image/jpeg','image/png') else 'VIDEO' if file.content_type=='video/mp4' else ''
+            kind='IMAGE' if file.content_type in ('image/jpeg','image/png') else 'VIDEO' if Path(file.filename or '').suffix.lower() in VIDEO_EXTENSIONS else ''
         else:
             template=require(db,Template,message.template_id)
             kind=str(definitions(template).get('HEADER',{}).get('format','')).upper()
         if kind not in MEDIA_TYPES:raise HTTPException(422,'Bu şablonda medya başlığı bulunmuyor.')
-        limit=MEDIA_TYPES[kind][1]
+        limit=settings.video_input_limit_mb*1024*1024 if kind=='VIDEO' else MEDIA_TYPES[kind][1]
         content=file.file.read(limit+1)
         asset=MediaUpload(filename=(file.filename or 'dosya').replace('\\','/').rsplit('/',1)[-1],content_type=file.content_type or '',content=content)
+        if kind=='VIDEO':
+            from app.video_processing import prepare_video,VideoError
+            try:converted,info=prepare_video(content,asset.filename)
+            except VideoError as e:raise HTTPException(503 if e.code in ('tools_missing','ffmpeg_missing','ffprobe_missing') else 422,e.message)
+            asset=MediaUpload(Path(asset.filename).stem+'.mp4','video/mp4',converted)
         return send_direct_message(message,user,db,asset)
     finally:file.file.close()
 
 def send_direct_message(data,user,db,upload=None):
+    if data.video_job_id:
+        if upload:raise HTTPException(422,'Tek bir video kaynağı seçin.')
+        from app.video_jobs import ready_video
+        job=ready_video(db,data.video_job_id,user)
+        upload=MediaUpload(Path(job.filename).stem+'.mp4','video/mp4',job.output)
     # This endpoint never reports a simulated message as a real send.
     if settings.dry_run:raise HTTPException(403,'DRY_RUN açık: gerçek WhatsApp gönderimi şu anda kapalı.')
     if not settings.live_send_enabled or not connection_ok(db):raise HTTPException(403,'Canlı Meta bağlantısı doğrulanmamış veya canlı gönderim kapalı.')

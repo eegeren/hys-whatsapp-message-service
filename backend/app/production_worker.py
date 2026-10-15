@@ -1,5 +1,5 @@
 """Continuous Railway service; PostgreSQL is the durable queue, Redis coordinates workers."""
-import signal,time,json
+import signal,time,json,logging
 from sqlalchemy import select
 from app.core import Session,now,settings
 from app.deployment import validate_production,redis_client
@@ -12,11 +12,14 @@ def stop(*args):
     stopping=True
 
 def run():
+    logging.basicConfig(level=logging.INFO)
     validate_production('worker')
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
     cache=redis_client()
     with Session() as db:db.execute(select(1))
     cache.ping()
+    from app.video_worker import start_video_thread
+    video_stop,video_thread=start_video_thread()
     lease=cache.lock('hys:production-worker:lease',timeout=120,blocking=False)
     owned=False
     waiting=False
@@ -59,6 +62,8 @@ def run():
                 except Exception:pass
             time.sleep(1)
     finally:
+        video_stop.set()
+        if video_thread.is_alive():video_thread.join(timeout=5)
         if owned:
             try:cache.delete(HEARTBEAT,STATE)
             except Exception:pass

@@ -21,6 +21,8 @@ def sender(monkeypatch):
         return '987654321'
     monkeypatch.setattr(messaging,'graph',graph)
     monkeypatch.setattr(messaging,'upload_media',upload)
+    # Payload tests use tiny synthetic headers. Real codec processing has separate binary fixtures.
+    monkeypatch.setattr('app.video_processing.prepare_video',lambda raw,name:(raw,{'converted':False}))
     return calls
 
 def template_id(components,body='Legacy body',language='tr'):

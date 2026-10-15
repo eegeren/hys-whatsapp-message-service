@@ -12,6 +12,14 @@ try{
  await page.getByRole('heading',{name:'Personel Duyuruları',exact:true}).waitFor();
  await page.getByLabel('PDF yükle').setInputFiles({name:'duyuru.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 staff ui')});
  await page.getByText('1. duyuru.pdf',{exact:false}).waitFor();
+ if(process.env.VIDEO_UI_SAMPLE){
+  await page.getByLabel('Video seç ve WhatsApp için hazırla').setInputFiles(process.env.VIDEO_UI_SAMPLE);
+  await page.getByText('Video hazır',{exact:true}).waitFor({timeout:60000});
+  await page.locator('video').first().evaluate(video=>new Promise((resolve,reject)=>{if(video.readyState>=1)return resolve(true);video.addEventListener('loadedmetadata',()=>resolve(true),{once:true});video.addEventListener('error',()=>reject(Error('Video preview failed')),{once:true})}));
+  await page.screenshot({path:'/tmp/hys-video-ready.png',fullPage:true});
+  await page.getByRole('button',{name:'Önizlediğim videoyu duyuruya ekle',exact:true}).click();
+  await page.getByText('2. hys-ui-sample.mp4',{exact:false}).waitFor();
+ }
  await page.getByRole('button',{name:'+ Yeni şablon hazırla',exact:true}).click();
  await page.getByLabel(/^Şablon adı/).fill('hys_ui_belge_basvuru');
  await page.getByLabel('Meta incelemesi için örnek dosya').selectOption({index:1});
@@ -20,7 +28,8 @@ try{
  await page.getByRole('button',{name:'Simülasyon taslağını kaydet',exact:true}).click();
  await page.getByText('Simülasyon taslağı kaydedildi.',{exact:false}).waitFor();
  await page.getByLabel('Belge başlıklı onaylı şablon').selectOption({label:'hys_personel_document · tr'});
- await page.getByRole('button',{name:'Önizle',exact:true}).click();await page.getByText('1 personel · 1 dosya · 1 toplam mesaj',{exact:true}).waitFor();
+ if(process.env.VIDEO_UI_SAMPLE)await page.getByLabel('Video başlıklı onaylı şablon').selectOption({label:'hys_personel_video · tr'});
+ await page.getByRole('button',{name:'Önizle',exact:true}).click();await page.getByText(process.env.VIDEO_UI_SAMPLE?'1 personel · 2 dosya · 2 toplam mesaj':'1 personel · 1 dosya · 1 toplam mesaj',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Gönder · Simülasyon',exact:true}).click();await page.getByRole('button',{name:'Duraklat',exact:true}).waitFor();
  await page.getByRole('button',{name:'Duraklat',exact:true}).click();await page.getByRole('button',{name:'Devam et',exact:true}).waitFor();
  await page.getByRole('button',{name:'Kalanları iptal et',exact:true}).click();await page.getByText('İptal edildi',{exact:true}).first().waitFor();

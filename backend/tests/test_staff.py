@@ -22,8 +22,10 @@ def prepared(client,monkeypatch):
         db.add_all([doc,video]);db.commit();templates=(doc.id,video.id)
     a=client.post('/api/staff/announcements',json={'name':'Test'}).json()['id'];base=f'/api/staff/announcements/{a}'
     assert client.post(base+'/assets',files={'file':('duyuru.pdf',b'%PDF-1.7 test','application/pdf')}).status_code==200
-    monkeypatch.setattr(staff.subprocess,'run',lambda *a,**k:SimpleNamespace(stdout=json.dumps({'streams':[{'codec_type':'video','codec_name':'h264'},{'codec_type':'audio','codec_name':'aac'}]}).encode()))
-    for i in range(2):assert client.post(base+'/assets',files={'file':(f'video{i}.mp4',b'\x00\x00\x00\x18ftypisom'+bytes([i]),'video/mp4')}).status_code==200
+    for i in range(2):
+        with Session() as db:
+            owner=db.scalar(select(User.id));job=VideoJob(id=f'fixture-video-{i}',owner_id=owner,filename=f'video{i}.mp4',status='ready',ticket_hash='fake',source_size=13,output_size=13,output=b'\x00\x00\x00\x18ftypisom'+bytes([i]),expires=now()+timedelta(hours=24));db.add(job);db.commit()
+        assert client.post(base+'/videos',json={'video_job_id':f'fixture-video-{i}'}).status_code==200
     return a,base,{'document_template':templates[0],'video_template':templates[1],'target':'all'}
 
 def approve(client,prepared,live=False):
@@ -125,8 +127,6 @@ def test_bad_upload_and_codec(client,prepared,monkeypatch):
     assert client.post(base+'/assets',files={'file':('again.pdf',b'%PDF-1.7')}).status_code==422
     assert client.post(base+'/assets',files={'file':('bad.mp4',b'not mp4')}).status_code==422
     assert client.post(base+'/assets',files={'file':('large.mp4',b'\0'*(16*1024*1024+1))}).status_code==413
-    monkeypatch.setattr(staff.subprocess,'run',lambda *a,**k:SimpleNamespace(stdout=b'{"streams":[{"codec_type":"video","codec_name":"hevc"}]}'))
-    assert client.post(base+'/assets',files={'file':('hevc.mp4',b'\0\0\0\x18ftypisomhevc')}).status_code==422
 
 def test_early_webhook_and_monotonic_status(client,prepared,monkeypatch):
     live(monkeypatch);monkeypatch.setattr(staff,'upload_media',lambda *a:'100')
@@ -167,13 +167,13 @@ def test_additive_migration_preserves_existing_data(tmp_path):
     import os,subprocess,sys
     from sqlalchemy import create_engine,text,inspect
     url='sqlite:///'+str(tmp_path/'migration.db');env={**os.environ,'DATABASE_URL':url}
-    subprocess.run([sys.executable,'-m','alembic','upgrade','003'],env=env,check=True,capture_output=True)
+    subprocess.run([sys.executable,'-m','alembic','upgrade','003'],env=env,cwd=__import__('pathlib').Path(__file__).resolve().parents[1],check=True,capture_output=True)
     e=create_engine(url)
     with e.begin() as c:c.execute(text("INSERT INTO system_values (key,value) VALUES ('sentinel','preserved')"))
-    subprocess.run([sys.executable,'-m','alembic','upgrade','head'],env=env,check=True,capture_output=True)
+    subprocess.run([sys.executable,'-m','alembic','upgrade','head'],env=env,cwd=__import__('pathlib').Path(__file__).resolve().parents[1],check=True,capture_output=True)
     with e.connect() as c:
         assert c.execute(text("SELECT value FROM system_values WHERE key='sentinel'")).scalar()=='preserved'
-        assert c.execute(text('SELECT version_num FROM alembic_version')).scalar()=='004'
+        assert c.execute(text('SELECT version_num FROM alembic_version')).scalar()=='005'
     assert {'contacts','messages','campaigns','staff_announcements','staff_assets','staff_deliveries'}<=set(inspect(e).get_table_names())
 
 def test_large_audience_status_pagination(client,prepared):

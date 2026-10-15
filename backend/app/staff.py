@@ -139,17 +139,27 @@ async def add_asset(id:int,file:UploadFile=File(...),user=Depends(admin),db=Depe
     name=re.sub(r'[^\w. -]','_',Path(file.filename or '').name)[:200]
     validate_upload(kind.upper(),MediaUpload(name,mime,raw))
     if kind=='video':
-        # Private OS temporary directory is removed on every success/failure path.
-        with tempfile.TemporaryDirectory(prefix='hys-video-') as directory:
-            path=Path(directory)/'video.mp4';path.write_bytes(raw);path.chmod(0o600)
-            try:
-                result=subprocess.run(['ffprobe','-v','error','-show_streams','-of','json',str(path)],capture_output=True,timeout=20,check=True)
-                streams=json.loads(result.stdout)['streams']
-                if not any(s.get('codec_type')=='video' and s.get('codec_name')=='h264' for s in streams) or any(s.get('codec_type')=='video' and s.get('codec_name')!='h264' or s.get('codec_type')=='audio' and s.get('codec_name')!='aac' for s in streams):raise ValueError()
-            except FileNotFoundError:raise HTTPException(503,'Video doğrulaması için sunucuda ffprobe kurulmalıdır.')
-            except Exception:raise HTTPException(422,'MP4 okunamadı. Video H.264, varsa ses AAC olmalıdır.')
+        from app.video_processing import prepare_video,VideoError
+        try:raw,info=prepare_video(raw,name)
+        except VideoError as e:raise HTTPException(503 if e.code in ('tools_missing','ffmpeg_missing','ffprobe_missing') else 422,e.message)
     if any(x.digest==hashlib.sha256(raw).hexdigest() for x in existing):raise HTTPException(409,'Bu dosya duyuruda zaten var.')
     db.add(StaffAsset(announcement_id=id,position=len(existing),filename=name,kind=kind,content_type=mime,content=raw,size=len(raw),digest=hashlib.sha256(raw).hexdigest(),expires=now()+timedelta(hours=24)))
+    a.preview_token='';db.commit();return {'ok':True}
+
+class PreparedVideo(BaseModel):
+    video_job_id:str
+
+@app.post('/api/staff/announcements/{id}/videos')
+def attach_video(id:int,data:PreparedVideo,user=Depends(admin),db=Depends(db_session)):
+    from app.video_jobs import ready_video
+    a=db.scalar(select(StaffAnnouncement).where(StaffAnnouncement.id==id).with_for_update())
+    if not a:raise HTTPException(404,'Duyuru bulunamadı.')
+    editable(a);files=assets(db,id)
+    if not files:raise HTTPException(422,'Önce PDF yükleyin.')
+    if len(files)>=11:raise HTTPException(422,'En fazla 10 video ekleyin.')
+    job=ready_video(db,data.video_job_id,user);digest=hashlib.sha256(job.output).hexdigest()
+    if any(f.digest==digest or f.video_job_id==job.id for f in files):raise HTTPException(409,'Bu video duyuruda zaten var.')
+    db.add(StaffAsset(announcement_id=id,position=len(files),filename=Path(job.filename).stem+'.mp4',kind='video',content_type='video/mp4',content=job.output,size=job.output_size,digest=digest,expires=job.expires,video_job_id=job.id))
     a.preview_token='';db.commit();return {'ok':True}
 
 @app.post('/api/staff/announcements/{id}/preview')
@@ -214,7 +224,7 @@ def detail(id:int,page:int=1,user=Depends(admin),db=Depends(db_session)):
     for g in grouped.values():
         statuses=[r['status'] for r in g['messages']]
         g['status']=next((s for s in ('uncertain','failed','cancelled') if s in statuses),min(statuses,key=lambda s:rank.get(s,0)))
-    return {'announcement':summary(a),'page':page,'recipient_total':total,'pages':max(1,(total+49)//50),'files':[{'id':f.id,'filename':f.filename,'kind':f.kind,'size':f.size} for f in files],'recipients':list(grouped.values())}
+    return {'announcement':summary(a),'page':page,'recipient_total':total,'pages':max(1,(total+49)//50),'files':[{'id':f.id,'filename':f.filename,'kind':f.kind,'size':f.size,'video_job_id':f.video_job_id} for f in files],'recipients':list(grouped.values())}
 
 def staff_delivery(db,item):
     row=db.scalar(select(StaffDelivery).where(StaffDelivery.meta_id==item['id']))

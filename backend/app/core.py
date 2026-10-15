@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     webhook_production_waba_id: str = ""
     meta_environment: str = "test"
     live_send_enabled: bool = False
+    video_input_limit_mb: int = 256
+    video_max_duration_seconds: int = 1800
+    video_timeout_seconds: int = 900
+    video_processing_enabled: bool = True
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
     staff_upload_origin: str = ""
     staff_dispatch_enabled: bool = False
     staff_document_unit_price: float | None = None
@@ -243,6 +249,7 @@ class StaffAsset(Base):
     content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     size: Mapped[int] = mapped_column(Integer)
     digest: Mapped[str] = mapped_column(String(64))
+    video_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     media_id: Mapped[str] = mapped_column(String(100), default='')
     expires: Mapped[datetime] = mapped_column(DateTime)
 
@@ -260,3 +267,23 @@ class StaffDelivery(Base):
     meta_id: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
     error: Mapped[str] = mapped_column(Text, default='')
     attempted: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class VideoJob(Base):
+    __tablename__ = 'video_jobs'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    filename: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(30), default='awaiting_upload', index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    ticket_hash: Mapped[str] = mapped_column(String(64))
+    source_size: Mapped[int] = mapped_column(Integer)
+    output_size: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    output: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    info: Mapped[str] = mapped_column(Text, default='{}')
+    error_code: Mapped[str] = mapped_column(String(50), default='')
+    error: Mapped[str] = mapped_column(Text, default='')
+    created: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+    expires: Mapped[datetime] = mapped_column(DateTime)
