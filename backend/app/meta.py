@@ -5,6 +5,13 @@ from email.utils import parsedate_to_datetime
 from fastapi import HTTPException
 from app.core import settings
 
+def safe_meta_text(value):
+    text=str(value or '')
+    for secret in (settings.meta_access_token,settings.meta_app_secret,settings.meta_verify_token,settings.panel_proxy_secret):
+        if secret:text=text.replace(secret,'[gizli]')
+    text=re.sub(r'(?i)(access_token[=\s:]+|Bearer\s+|OAuth\s+)[^\s&"<>]+',r'\1[gizli]',text)
+    return text[:1500]
+
 RATE_CODES=(4,80007,130429,131056)
 NO_RETRY_CODES=(131026,131049,130472,131048)
 def delivery_error_message(code):
@@ -50,7 +57,10 @@ def graph(method,path,payload=None,params=None,files=None,content=None):
         if code in template_errors:message=template_errors[code]
         if response.status_code==429 or code in RATE_CODES:message='Meta istek sınırına ulaşıldı. Bir süre bekleyip tekrar deneyin.'
         if code in NO_RETRY_CODES or code in (130429,131056):message=delivery_error_message(code)
-        raise HTTPException(502,{'message':message,'code':code,'retryable':code not in NO_RETRY_CODES and (response.status_code==429 or code in RATE_CODES),'ambiguous':response.status_code>=500,'retry_after':retry_after_seconds(response.headers.get('Retry-After'))})
+        error_data=error.get('error_data',{})
+        error_data=error_data if isinstance(error_data,dict) else {}
+        meta_reason=error.get('error_user_msg') or error_data.get('details') or error.get('message')
+        raise HTTPException(502,{'message':message,'code':code,'retryable':code not in NO_RETRY_CODES and (response.status_code==429 or code in RATE_CODES),'ambiguous':response.status_code>=500,'retry_after':retry_after_seconds(response.headers.get('Retry-After')),'http_status':response.status_code,'meta_message':safe_meta_text(meta_reason),'meta_title':safe_meta_text(error.get('error_user_title')),'subcode':error.get('error_subcode') if isinstance(error.get('error_subcode'),int) else None,'trace_id':safe_meta_text(error.get('fbtrace_id'))})
     return result
 
 def upload_media(filename,content,content_type):
@@ -66,8 +76,8 @@ def upload_template_sample(asset,kind="IMAGE"):
     validate_upload(kind,asset)
     session=graph('POST','app/uploads',params={'file_name':asset.filename,'file_length':len(asset.content),'file_type':asset.content_type})
     upload_id=session.get('id','')
-    if not isinstance(upload_id,str) or not re.fullmatch(r'upload:[A-Za-z0-9_:=+-]+(?:\?sig=[A-Za-z0-9_.=-]+)?',upload_id):raise HTTPException(502,'Meta örnek görsel yükleme oturumu doğrulanamadı.')
+    if not isinstance(upload_id,str) or not re.fullmatch(r'upload:[A-Za-z0-9_:=+-]+(?:\?sig=[A-Za-z0-9_.=-]+)?',upload_id):raise HTTPException(502,'Meta örnek medya yükleme oturumu doğrulanamadı.')
     result=graph('POST',upload_id,content=asset.content)
     handle=result.get('h')
-    if not isinstance(handle,str) or not re.fullmatch(r'[0-9]:[A-Za-z0-9_:=+./-]{1,2000}',handle):raise HTTPException(502,'Meta örnek görsel yükleme tanıtıcısını doğrulayamadı.')
+    if not isinstance(handle,str) or not re.fullmatch(r'[0-9]:[A-Za-z0-9_:=+./-]{1,2000}',handle):raise HTTPException(502,'Meta örnek medya yükleme tanıtıcısını doğrulayamadı.')
     return handle

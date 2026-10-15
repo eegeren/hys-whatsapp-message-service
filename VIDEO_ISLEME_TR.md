@@ -72,3 +72,15 @@ Tarayıcı smoke testi `VIDEO_UI_SAMPLE=/tam/yol/hys-ui-sample.mov` verildiğind
 - Ayrı internal Docker ağındaki geçici PostgreSQL 16 ile `004 → 005` migration, eski sentinel verisinin korunması, gerçek MOV dönüşümü, BYTEA kaynak temizliği, imzalı HTTP Range önizleme ve personel ekleme doğrulandı. Test container/veritabanı sonrasında kaldırıldı; canlı veritabanına dokunulmadı.
 - Masaüstü/mobil tarayıcı smoke testinde MOV yüklendi, dönüşüm beklendi, hazır MP4 oynatıcısının metadata okuması kontrol edildi, önizlenen video duyuruya eklendi ve simülasyon akışı tamamlandı. TypeScript/Vite build ve 3 Vercel yapılandırma testi geçti.
 - Gerçek WhatsApp mesajı/Meta medya yüklemesi/Meta şablon başvurusu yapılmadı. Railway/Vercel production dağıtımı bu çalışma sırasında yapılmadı.
+
+## Video %1 kuyruğunda bekliyorsa
+
+%1, kaynak yüklendi ve iş `queued` durumunda demektir; FFmpeg dönüşümü henüz başlamamıştır. Railway worker servisi API ile aynı committe olmalı; Start Command `python -m app.production_worker`, `VIDEO_PROCESSING_ENABLED=true` ve API ile aynı PostgreSQL `DATABASE_URL` gereklidir. Worker uyumamalı ve deployment başarılı olmalıdır. Redis bağlantısı başarısızsa production worker video thread'ini de başlatamaz; worker logları kontrol edilmelidir. Eski Celery/`app.worker` başlangıç komutu yeni video thread'ini başlatmaz; mevcut Railway komutu kullanılmalıdır.
+
+Yeni durum kontrolü video worker'ının PostgreSQL üzerinden 5 saniyede bir verdiği heartbeat'i izler. 20 saniye içinde heartbeat yoksa panel sessizce “sırayla hazırlanıyor” demek yerine işleme hizmetinin bağlı görünmediğini belirtir. Heartbeat ayrı thread'de olduğundan uzun dönüşümler sırasında kesilmez. Canlı worker varsa sıra numarası ve aktif dönüşüm sayısı gösterilir; kuyruk erişim hatası ayrıca gösterilir. Bekleyen kaynak dosyaları süresi dolmadığı sürece korunur, worker güncellendiğinde yeniden yüklemek gerekmez. Heartbeat olmaması tek başına servisin var olmadığını kanıtlamaz; eski sürüm/yanlış DB/servis erişim sorunu olasılıklarını ayırmak için Railway logları gerekir.
+
+## Şablon başvurusunda “Örnek yüklenemedi”
+
+Bu durum `message_templates` oluşturma isteğinden önceki Resumable Upload aşamasının başarısız olduğunu gösterir; aynı istekte şablon oluşturma çağrısı yapılmamıştır. Önceki sürüm gerçek Meta hata kodunu/metnini kaybettiği için yalnız bu kayıttan token, izin, dosya veya bağlantı sebebi çıkarılamaz.
+
+Yeni sürüm örnek yükleme ve şablon oluşturma aşamalarını ayrı bildirir; Meta kullanıcı hata metni, kod/alt kod ve trace ID gizli bilgiler redakte edilerek kaydedilir. Başvurular tablosunda “Hata ayrıntısı” ve yalnızca GET sorgusu yapan “Meta’da başvuruyu kontrol et” düğmeleri bulunur. Örnek yükleme başarısızlığı veya Meta'nın kesin reddi sonrası aynı adla yeniden açık onay verilerek deneme yapılabilir. Timeout/belirsiz şablon oluşturma yanıtı sonrasında otomatik veya aynı adla kör tekrar yapılmaz; mevcut başvuru Meta’dan sorgulanıp yerel kayıtla eşleştirilir. Genel şablon submit endpoint'i de bu korumayı atlayamaz.

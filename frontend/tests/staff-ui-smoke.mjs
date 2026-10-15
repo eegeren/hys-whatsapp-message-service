@@ -25,6 +25,14 @@ try{
  await page.getByLabel('Meta incelemesi için örnek dosya').selectOption({index:1});
  await page.getByRole('button',{name:'Başvuruyu önizle',exact:true}).click();
  await page.getByLabel('Bu şablonun simülasyon taslağı olarak kaydedilmesini onaylıyorum.').check();
+ if(process.env.TEMPLATE_FAILURE_TEST){
+  await page.route('**/api/templates/media-review',route=>route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({detail:{message:'Örnek dosya Meta yüklemesi başarısız. Test token yetkisini kontrol edin.',phase:'uploading',safe_to_retry:true,code:190}})}));
+  await page.getByRole('button',{name:'Simülasyon taslağını kaydet',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'Test token yetkisini kontrol edin.'}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Simülasyon taslağını kaydet',exact:true}).isDisabled(),true);
+  await page.unroute('**/api/templates/media-review');
+  await page.getByLabel('Bu şablonun simülasyon taslağı olarak kaydedilmesini onaylıyorum.').check();
+ }
  await page.getByRole('button',{name:'Simülasyon taslağını kaydet',exact:true}).click();
  await page.getByText('Simülasyon taslağı kaydedildi.',{exact:false}).waitFor();
  await page.getByLabel('Belge başlıklı onaylı şablon').selectOption({label:'hys_personel_document · tr'});

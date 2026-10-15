@@ -85,3 +85,19 @@ def test_prepared_output_reaches_single_message_api_only_after_send(client,uploa
     assert response.status_code==200,response.text
     assert calls[0]==('upload','input.mp4',b'\0\0\0\x18ftypisom','video/mp4')
     assert calls[1][1]['video']=={'id':'12345','caption':'Duyuru videosu'}
+
+def test_queue_reports_missing_worker_instead_of_fake_progress(client,uploaded):
+    row=client.get('/api/video/jobs/'+uploaded['id']).json()
+    assert row['status']=='queued' and row['progress']==1
+    assert row['worker']['state']=='missing' and row['queue_position']==1
+
+def test_worker_health_distinguishes_busy_error_and_stale_workers(client,uploaded):
+    with Session() as db:
+        db.add(SystemValue(key='video_worker:test',value=json.dumps({'seen':now().isoformat(),'state':'ready','enabled':True})));db.commit()
+    assert client.get('/api/video/jobs/'+uploaded['id']).json()['worker']['state']=='healthy'
+    with Session() as db:
+        row=db.get(SystemValue,'video_worker:test');row.value=json.dumps({'seen':now().isoformat(),'state':'error','enabled':True});db.commit()
+    assert client.get('/api/video/jobs/'+uploaded['id']).json()['worker']['state']=='error'
+    with Session() as db:
+        row=db.get(SystemValue,'video_worker:test');row.value=json.dumps({'seen':(now()-timedelta(seconds=30)).isoformat(),'state':'ready','enabled':True});db.commit()
+    assert client.get('/api/video/jobs/'+uploaded['id']).json()['worker']['state']=='missing'

@@ -38,6 +38,8 @@ def template_submit(id:int,user=Depends(admin),db=Depends(db_session)):
     t=require(db,Template,id)
     claim='carousel_review:'+hashlib.sha256((settings.meta_waba_id+':'+t.name).encode()).hexdigest()
     if db.get(SystemValue,claim):raise HTTPException(409,'Bu carousel başvurusu özel onay ekranında yönetilir. Önce Meta şablonlarını yenileyin; tekrar başvuru yapılmadı.')
+    media_claim='media_review:'+hashlib.sha256((settings.meta_waba_id+':'+t.name).encode()).hexdigest()
+    if db.get(SystemValue,media_claim):raise HTTPException(409,'Bu medya başvurusunu özel başvuru ekranından yönetin; tekrar gönderilmedi.')
     result=graph('POST',f'{settings.meta_waba_id}/message_templates',{'name':t.name,'language':t.language,'category':t.category,'components':json.loads(t.components) or [{'type':'BODY','text':t.body}]})
     t.meta_id=result['id'];t.status=result.get('status','PENDING');audit(db,user.username,'template_submit',t.name);db.commit();return serial(t)
 class CampaignInput(BaseModel):

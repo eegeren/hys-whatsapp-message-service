@@ -33,9 +33,24 @@ def ready_video(db,id,user):
 
 def preview_signature(id,expiry):return hmac.new((settings.panel_proxy_secret or LOCAL_SECRET).encode(),f'{id}:{expiry}'.encode(),hashlib.sha256).hexdigest()
 
-def job_info(job):
+def worker_health(db):
+    live=[]
+    for row in db.scalars(select(SystemValue).where(SystemValue.key.like('video_worker:%'))):
+        try:
+            value=json.loads(row.value)
+            if now()-datetime.fromisoformat(value['seen'])<timedelta(seconds=20) and value.get('enabled'):live.append(value)
+        except (ValueError,KeyError,TypeError):continue
+    healthy=any(value.get('state')=='ready' for value in live)
+    active=db.scalar(select(func.count(VideoJob.id)).where(VideoJob.status.in_(['probing','converting','validating']),VideoJob.expires>now()))
+    return {'state':'disabled' if not settings.video_processing_enabled else 'healthy' if healthy else 'error' if live else 'missing','active_jobs':active,'workers':len(live)}
+
+
+def job_info(job,db=None):
     expiry=int(time.time())+900
-    return {'id':job.id,'filename':job.filename,'output_filename':Path(job.filename).stem+'.mp4','status':job.status,'progress':job.progress,'source_size':job.source_size,'output_size':job.output_size,'info':json.loads(job.info),'error_code':job.error_code,'error':job.error,'expires':job.expires.isoformat(),'preview_url':video_origin()+f'/api/video-preview/{job.id}/{expiry}/{preview_signature(job.id,expiry)}' if job.status=='ready' else None}
+    diagnostics={}
+    if db is not None:
+        diagnostics={'worker':worker_health(db),'queue_position':db.scalar(select(func.count(VideoJob.id)).where(VideoJob.status=='queued',VideoJob.expires>now(),VideoJob.created<=job.created)) if job.status=='queued' else None}
+    return {**diagnostics,'id':job.id,'filename':job.filename,'output_filename':Path(job.filename).stem+'.mp4','status':job.status,'progress':job.progress,'source_size':job.source_size,'output_size':job.output_size,'info':json.loads(job.info),'error_code':job.error_code,'error':job.error,'expires':job.expires.isoformat(),'preview_url':video_origin()+f'/api/video-preview/{job.id}/{expiry}/{preview_signature(job.id,expiry)}' if job.status=='ready' else None}
 
 class VideoInput(BaseModel):
     filename:str=Field(min_length=1,max_length=200)
@@ -53,7 +68,7 @@ def create_job(data:VideoInput,user=Depends(actor),db=Depends(db_session)):
     if count>=5:raise HTTPException(429,'En fazla 5 video aynı anda bekleyebilir. İşlemlerin bitmesini bekleyin veya bekleyen videoları kaldırın.')
     token=secrets.token_urlsafe(32);job=VideoJob(id=str(uuid.uuid4()),owner_id=user.id,filename=re.sub(r'[^\w. -]','_',Path(data.filename.replace('\\','/')).name)[:200],ticket_hash=hashlib.sha256(token.encode()).hexdigest(),source_size=data.size,expires=now()+timedelta(hours=24))
     origin=video_origin();db.add(job);audit(db,user.username,'video_prepare',job.id);db.commit()
-    return {**job_info(job),'upload_url':origin+f'/api/video-upload/{job.id}/{token}'}
+    return {**job_info(job,db),'upload_url':origin+f'/api/video-upload/{job.id}/{token}'}
 
 @app.put('/api/video-upload/{id}/{token}')
 async def upload_job(id:str,token:str,request:Request,db=Depends(db_session)):
@@ -72,12 +87,12 @@ async def upload_job(id:str,token:str,request:Request,db=Depends(db_session)):
                 tmp.write(chunk)
             if size!=job.source_size:raise HTTPException(422,'Video eksik yüklendi. Dosyayı yeniden seçin.')
             tmp.seek(0);job.source=tmp.read()
-        job.status='queued';job.progress=1;db.commit();return job_info(job)
+        job.status='queued';job.progress=1;db.commit();return job_info(job,db)
     except Exception:
         job.status='failed';job.error_code='upload_failed';job.error='Video yüklenemedi. Dosyayı yeniden seçin.';job.source=None;db.commit();raise
 
 @app.get('/api/video/jobs/{id}')
-def status(id:str,user=Depends(actor),db=Depends(db_session)):return job_info(owned(db,id,user))
+def status(id:str,user=Depends(actor),db=Depends(db_session)):return job_info(owned(db,id,user),db)
 
 @app.delete('/api/video/jobs/{id}')
 def discard(id:str,user=Depends(actor),db=Depends(db_session)):
