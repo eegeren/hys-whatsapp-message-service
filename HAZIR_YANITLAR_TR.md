@@ -55,3 +55,5 @@ Ayarlar altı bölüme ayrılır: Profilim, Ekip hesapları, Hazır yanıtlar, M
 Yönetici Ekip hesaplarında destek personelinin adını ve kullanıcı adını düzenleyebilir, yeni parola belirleyebilir veya hesabı silebilir. Bu bölümden yönetici hesapları değiştirilemez. Parola sıfırlama mevcut oturumların tamamını geçersiz kılar; eski parola artık çalışmaz. Parola veya hash yanıtlara ve denetim kaydına yazılmaz.
 
 Migration **007**, `users.active` alanını ekler ve mevcut hesapları aktif bırakır. Silme, hesabı pasif yapar ve oturumlarını siler; kişi artık giriş yapamaz ve hesap listesinden çıkar. Eski mesajlar, denetim kayıtları ve kişisel hazır yanıtların sahiplik bağlantıları korunur. Silinen kullanıcı adı geçmiş kayıtları korumak için tekrar kullanılamaz. DELETE `/api/users/{id}`, PUT `/api/users/{id}`, POST `/api/users/{id}/password` yalnızca yöneticilere açıktır. Üretimde API ve worker yeni sürümle başlamadan önce mevcut pre-deploy `alembic upgrade head` adımı 007'ye ulaşmalıdır.
+
+Parola alt sınırı ilk kurulum, hesap oluşturma ve parola sıfırlama için 6 karakterdir. Büyük/küçük harf, rakam veya özel karakter kombinasyonu zorunlu değildir.

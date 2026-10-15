@@ -3,7 +3,7 @@ from fastapi import Depends,HTTPException
 from pydantic import BaseModel,Field,field_validator
 from sqlalchemy import select,delete
 from sqlalchemy.exc import IntegrityError
-from app.core import User,LoginSession,audit
+from app.core import User,LoginSession,audit,MIN_PASSWORD_LENGTH
 from app.main import app,admin,db_session,ph
 from app.quick_replies import profile,ProfileInput
 
@@ -29,7 +29,7 @@ def update_staff(id:int,data:StaffEdit,user=Depends(admin),db=Depends(db_session
     try:db.commit()
     except IntegrityError:db.rollback();raise HTTPException(409,'Bu kullanıcı adı zaten kullanılıyor.')
     return profile(row)
-class StaffPassword(BaseModel):password:str=Field(min_length=12,max_length=128)
+class StaffPassword(BaseModel):password:str=Field(min_length=MIN_PASSWORD_LENGTH,max_length=128)
 @app.post('/api/users/{id}/password')
 def reset_staff_password(id:int,data:StaffPassword,user=Depends(admin),db=Depends(db_session)):
     row=support(db,id);row.password=ph.hash(data.password)

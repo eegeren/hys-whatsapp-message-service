@@ -74,3 +74,11 @@ def test_account_lifecycle_is_admin_only_and_protects_admins(client):
     assert client.delete(f'/api/users/{target}').status_code==403
     assert client.put(f'/api/users/{target}',json={'username':'other','display_name':'Other'}).status_code==403
     assert client.post(f'/api/users/{target}/password',json={'password':'ChangedPassword123!'}).status_code==403
+
+
+def test_six_character_reset_password_allowed_five_rejected(client):
+    assert client.post('/api/users',json={'username':'six.char','password':'Abc123','role':'operator'}).status_code==200
+    id=next(u['id'] for u in client.get('/api/users').json() if u['username']=='six.char')
+    assert client.post(f'/api/users/{id}/password',json={'password':'12345'}).status_code==422
+    assert client.post(f'/api/users/{id}/password',json={'password':'Def456'}).status_code==200
+    assert client.post('/api/login',json={'username':'six.char','password':'Def456'}).status_code==200

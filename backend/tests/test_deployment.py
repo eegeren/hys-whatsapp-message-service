@@ -35,7 +35,7 @@ def test_production_cookie_is_secure_and_short_password_is_rejected(client,monke
     assert 'Secure' in cookie and 'HttpOnly' in cookie and 'SameSite=strict' in cookie
     assert client.post('/api/login',headers=proxy_headers(),json={'username':'hys','password':'hys'}).status_code==401
 
-@pytest.mark.parametrize('length',[7,11,128])
+@pytest.mark.parametrize('length',[6,7,128])
 def test_production_personnel_password_boundaries_allow_creation_and_login(client,monkeypatch,length):
     cloud(monkeypatch)
     password='x'*(length-2)+'1!'
@@ -45,14 +45,14 @@ def test_production_personnel_password_boundaries_allow_creation_and_login(clien
     assert response.status_code==200
     assert response.json()['role']=='operator'
 
-@pytest.mark.parametrize('length',[6,129])
+@pytest.mark.parametrize('length',[5,129])
 def test_production_personnel_rejects_password_outside_bounds(client,monkeypatch,length):
     cloud(monkeypatch)
     response=client.post('/api/users',headers=proxy_headers(),json={'username':'boundary-user','password':'x'*length})
     assert response.status_code==422
 
-@pytest.mark.parametrize('length,status',[(6,422),(7,200),(11,200)])
-def test_initial_production_setup_accepts_seven_character_password(monkeypatch,length,status):
+@pytest.mark.parametrize('length,status',[(5,422),(6,200),(7,200)])
+def test_initial_production_setup_accepts_six_character_password(monkeypatch,length,status):
     from fastapi.testclient import TestClient
     from app.main import app
     with TestClient(app) as client:
