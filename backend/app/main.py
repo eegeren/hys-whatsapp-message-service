@@ -20,7 +20,7 @@ async def lifespan(app):
     yield
 
 production=settings.app_environment=='production'
-app=FastAPI(title='HYS WhatsApp Yönetim Merkezi',lifespan=lifespan,docs_url=None if production else '/docs',redoc_url=None if production else '/redoc',openapi_url=None if production else '/openapi.json')
+app=FastAPI(title='HYS Connect Yönetim Merkezi',lifespan=lifespan,docs_url=None if production else '/docs',redoc_url=None if production else '/redoc',openapi_url=None if production else '/openapi.json')
 app.add_middleware(CORSMiddleware,allow_origins=[settings.panel_origin] if settings.panel_origin else [],allow_credentials=True,allow_methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','X-HYS-Request'])
 ph=PasswordHasher()
 

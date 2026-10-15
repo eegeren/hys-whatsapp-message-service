@@ -17,7 +17,7 @@ function Empty({title='Henüz kayıt yok',text='İlk kaydınızı ekleyerek baş
 function App(){
  const [setup,setSetup]=useState<Row|null>(null),[user,setUser]=useState<Row|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  useEffect(()=>{(async()=>{try{setSetup(await api('/setup'));try{setUser(await api('/me'));}catch{}}catch(e){setError(String(e));}finally{setLoading(false)}})()},[]);
- if(loading)return <div className="simple-loading">HYS WhatsApp yükleniyor…</div>;
+ if(loading)return <div className="simple-loading">HYS Connect yükleniyor…</div>;
  if(user)return <Workspace user={user} onLogout={async()=>{try{await api('/logout','POST')}finally{setUser(null)}}}/>;
  return <AuthPanel setup={setup} initialError={error} api={api} onLogin={setUser} onSetup={()=>setSetup({...setup,required:false})}/>;
 }
