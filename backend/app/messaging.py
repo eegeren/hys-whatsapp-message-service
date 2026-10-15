@@ -65,7 +65,11 @@ def conversation_detail(key:str,page:int=1,user=Depends(actor),db=Depends(db_ses
     if phone_value is None:raise HTTPException(404,'Konuşma bulunamadı')
     items=db.scalars(select(Message).where(Message.phone==phone_value).order_by(Message.created.desc(),Message.id.desc()).offset((max(1,page)-1)*100).limit(100)).all()
     items=list(reversed(items));audit(db,user.username,'conversation_access',key[:12]);db.commit()
-    return {'key':key,'phone':phone_value,'items':[{**serial(m),'phone':phone_value} for m in items]}
+    from app.incoming_media import incoming_content
+    ids=[m.meta_id for m in items if m.direction=='in' and m.meta_id]
+    events=db.scalars(select(WebhookItem).where(WebhookItem.kind=='message',WebhookItem.meta_id.in_(ids))).all() if ids else []
+    content={e.meta_id:incoming_content(json.loads(e.payload)) for e in events}
+    return {'key':key,'phone':phone_value,'items':[{**serial(m),'phone':phone_value,'content':content.get(m.meta_id)} for m in items]}
 
 class ConversationOpen(BaseModel):phone:str=Field(min_length=8,max_length=20)
 @app.post('/api/conversations/open')

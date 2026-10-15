@@ -130,12 +130,26 @@ async def receive_webhook(request:Request,db=Depends(db_session)):
                 if not isinstance(items,list):raise HTTPException(422,'Geçersiz webhook olay yapısı')
                 for item in items:
                     if not isinstance(item,dict) or not isinstance(item.get('id'),str) or not 0<len(item['id'])<=200:raise HTTPException(422,'Geçersiz webhook olay kimliği')
+                    if kind=='message' and not isinstance(item.get('type','unknown'),str):raise HTTPException(422,'Geçersiz webhook mesaj türü')
                     # Persist only operational fields, never arbitrary echoed credentials.
                     safe={k:item[k] for k in ('id','from','type','text','timestamp','status','recipient_id') if k in item}
                     if item.get('type')=='button':
                         button=item.get('button',{})
                         if not isinstance(button,dict):raise HTTPException(422,'Geçersiz webhook buton yanıtı')
                         safe['button']={k:button[k] for k in ('text','payload') if isinstance(button.get(k),str)}
+                    # Keep the media ID, never a temporary download URL or credentials.
+                    from app.incoming_media import MEDIA_KINDS
+                    message_type=item.get('type')
+                    if message_type in MEDIA_KINDS and isinstance(item.get(message_type),dict):
+                        safe[message_type]={k:item[message_type][k] for k in ('id','mime_type','sha256','filename','caption','voice','animated') if isinstance(item[message_type].get(k),(str,bool))}
+                    if message_type=='location' and isinstance(item.get('location'),dict):
+                        safe['location']={k:v for k,v in item['location'].items() if k in ('latitude','longitude','name','address') and isinstance(v,(str,int,float))}
+                    if message_type=='contacts' and isinstance(item.get('contacts'),list):
+                        safe['contacts']=[{'name':{'formatted_name':c.get('name',{}).get('formatted_name','')},'phones':[{'phone':p.get('phone','')} for p in c.get('phones',[]) if isinstance(p,dict)]} for c in item['contacts'] if isinstance(c,dict) and isinstance(c.get('name',{}),dict) and isinstance(c.get('phones',[]),list)]
+                    if message_type=='interactive' and isinstance(item.get('interactive'),dict):
+                        reply_type=item['interactive'].get('type')
+                        if reply_type in ('button_reply','list_reply') and isinstance(item['interactive'].get(reply_type),dict):safe['interactive']={'type':reply_type,reply_type:{'title':item['interactive'][reply_type].get('title','') if isinstance(item['interactive'][reply_type].get('title',''),str) else ''}}
+                    if message_type=='reaction' and isinstance(item.get('reaction'),dict):safe['reaction']={'emoji':item['reaction'].get('emoji','')}
                     if 'errors' in item:safe['errors']=[{'code':e.get('code')} for e in item['errors'] if isinstance(e,dict)] if isinstance(item['errors'],list) else []
                     safe=scrub(safe)
                     if record(db,kind,number,safe):

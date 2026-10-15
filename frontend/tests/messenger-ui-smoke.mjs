@@ -1,6 +1,7 @@
 // Isolated sandbox only; live Meta calls are forbidden by staff_ui_server.
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH||'playwright');
 const browser=await chromium.launch({headless:true,...(process.env.CHROME_EXECUTABLE?{executablePath:process.env.CHROME_EXECUTABLE}:{})});
@@ -9,6 +10,15 @@ try{
  await page.goto(process.env.STAFF_UI_URL||'http://127.0.0.1:3012');
  await page.locator('input[name=username]').fill('uiadmin');await page.locator('input[name=password]').fill('UITestPassword123!');await page.getByRole('button',{name:'Giriş yap',exact:true}).click();
  await page.getByLabel('Mesaj yaz',{exact:true}).waitFor();
+ const audio=page.getByLabel('Gelen ses kaydı',{exact:true});await audio.waitFor({state:'attached'});
+ if(process.env.MEDIA_UI_AUDIO){
+  const source=await audio.getAttribute('src');await page.route('**'+source,route=>route.fulfill({contentType:'audio/ogg',body:readFileSync(process.env.MEDIA_UI_AUDIO)}));
+  await audio.evaluate(async el=>{await el.play();el.pause()});assert.equal(await audio.evaluate(el=>el.error),null);
+ }
+ await page.locator('.incoming-image').getByRole('button',{name:'Görüntüle',exact:true}).click();
+ await page.locator('.incoming-image img').waitFor({state:'attached'});
+ await page.getByText('Dosya açılamadı.',{exact:false}).first().waitFor();
+ await page.locator('.chat-history').evaluate(el=>el.scrollTop=0);await page.screenshot({path:'/tmp/hys-incoming-media-desktop.png',fullPage:true});
  const geometry=()=>page.evaluate(()=>({composer:document.querySelector('.wa-composer').getBoundingClientRect().height,history:document.querySelector('.chat-history').getBoundingClientRect().height,overflow:document.documentElement.scrollWidth>innerWidth}));
  let g=await geometry();assert(g.composer<120);assert(g.history>500);assert(!g.overflow);
  assert.equal(await page.getByLabel('Görsel ekle',{exact:true}).isVisible(),false);
