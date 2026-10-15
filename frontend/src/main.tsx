@@ -6,6 +6,7 @@ import {createRoot} from 'react-dom/client';
 import {LayoutDashboard,Users,ShieldCheck,Megaphone,BriefcaseBusiness,Store,MessagesSquare,FileText,Inbox,History,ChartNoAxesCombined,Settings,SlidersHorizontal,ArrowUpRight,Plus,Upload,Download,Search,ChevronRight,LogOut,CheckCircle2,AlertCircle,X,Menu,Send,Clock,MessageCircle,RefreshCw} from 'lucide-react';
 import './style.css';
 import './ui-polish.css';
+import './whatsapp.css';
 import TestMessagePanel from './TestMessagePanel';
 type Row=Record<string,any>;
 async function api(path:string,method='GET',body?:any){const r=await fetch('/api'+path,{method,headers:{'X-HYS-Request':'1',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},body:body?body instanceof FormData?body:JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:d.detail?.message?(d.detail.message+(d.detail.code!==undefined?' (Meta hata kodu: '+d.detail.code+')':'')):'İşlem tamamlanamadı. Girilen bilgileri kontrol edin.');return d;}
