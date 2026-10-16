@@ -1,4 +1,5 @@
 import re
+import logging
 import httpx
 from datetime import datetime,timezone
 from email.utils import parsedate_to_datetime
@@ -79,5 +80,10 @@ def upload_template_sample(asset,kind="IMAGE"):
     if not isinstance(upload_id,str) or not re.fullmatch(r'upload:[A-Za-z0-9_:=+-]+(?:\?sig=[A-Za-z0-9_.=-]+)?',upload_id):raise HTTPException(502,'Meta örnek medya yükleme oturumu doğrulanamadı.')
     result=graph('POST',upload_id,content=asset.content)
     handle=result.get('h')
-    if not isinstance(handle,str) or not re.fullmatch(r'[0-9]:[A-Za-z0-9_:=+./-]{1,2000}',handle):raise HTTPException(502,'Meta örnek medya yükleme tanıtıcısını doğrulayamadı.')
+    # Meta's h is opaque: do not impose a version, alphabet or 2 KB token format.
+    # It is forwarded unchanged in JSON, never interpreted as a URL or header.
+    reason='missing_or_wrong_type' if not isinstance(handle,str) else 'empty' if not handle.strip() else 'too_long' if len(handle)>65536 else 'control_character' if any(ord(c)<32 or ord(c)==127 for c in handle) else None
+    if reason:
+        logging.getLogger('hys.templates').warning('sample_handle_invalid reason=%s type=%s length=%s',reason,type(handle).__name__,len(handle) if isinstance(handle,str) else None)
+        raise HTTPException(502,'Meta örnek medya yükleme yanıtında geçerli bir h tanıtıcısı dönmedi. Teknik kayıtta neden belirtildi; dosyayı yeniden seçip açık onayla deneyin.')
     return handle

@@ -124,3 +124,23 @@ def test_resumable_http_format_has_oauth_offset_and_raw_bytes(monkeypatch):
     assert kwargs['headers']['Authorization']=='OAuth '+settings.meta_access_token
     assert kwargs['headers']['file_offset']=='0'
     assert kwargs['content']==PNG and 'json' not in kwargs and 'files' not in kwargs
+
+@pytest.mark.parametrize('handle',[
+    '4::'+('a'*5000),
+    '12:opaque/token?signature=abc%2Fdef&version=next',
+    'opaque-meta-handle.with~new!alphabet',
+])
+def test_resumable_handle_is_opaque_and_forwarded_unchanged(monkeypatch,handle):
+    from app.meta import upload_template_sample
+    monkeypatch.setattr('app.meta.graph',lambda method,path,**kw:{'id':'upload:session'} if path=='app/uploads' else {'h':handle})
+    assert upload_template_sample(MediaUpload('sample.png','image/png',PNG))==handle
+
+@pytest.mark.parametrize('handle',[None,123,{},'', '   ','bad\nhandle','x'*65537])
+def test_invalid_handle_is_rejected_without_logging_its_value(monkeypatch,caplog,handle):
+    from fastapi import HTTPException
+    from app.meta import upload_template_sample
+    monkeypatch.setattr('app.meta.graph',lambda method,path,**kw:{'id':'upload:session'} if path=='app/uploads' else {'h':handle})
+    with pytest.raises(HTTPException) as exc:upload_template_sample(MediaUpload('sample.png','image/png',PNG))
+    assert exc.value.status_code==502
+    assert 'sample_handle_invalid reason=' in caplog.text
+    assert 'bad\nhandle' not in caplog.text and 'x'*100 not in caplog.text
