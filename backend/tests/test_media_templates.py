@@ -1,6 +1,6 @@
 import json
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select,func
 from app.core import *
 from app import media_templates
 from tests.test_staff import prepared,no_network
@@ -115,3 +115,23 @@ def test_check_reconciles_unknown_without_any_post_to_meta(client,proposal,real_
     monkeypatch.setattr(media_templates,'graph',read_only)
     assert client.post(f'/api/templates/media-review/{id}/check').json()['status']=='PENDING'
     assert client.post(f'/api/templates/{id}/submit').status_code==409
+
+
+def test_multiline_meta_handle_reaches_template_review_without_modification(client,proposal,real_mode,monkeypatch):
+    import app.meta as meta
+    import app.media_templates as reviews
+    handle='4::first-signed-handle\n4::second-signed-handle'
+    submitted=[]
+    def fake_graph(method,path,payload=None,**kwargs):
+        if method=='GET':return {'data':[]}
+        if path=='app/uploads':return {'id':'upload:sample'}
+        if path=='upload:sample':return {'h':handle}
+        submitted.append(payload);return {'id':'12345','status':'PENDING'}
+    monkeypatch.setattr(meta,'graph',fake_graph)
+    monkeypatch.setattr(reviews,'graph',fake_graph)
+    monkeypatch.setattr(reviews,'upload_template_sample',meta.upload_template_sample)
+    response=client.post('/api/templates/media-review',json=proposal)
+    assert response.status_code==200,response.text
+    assert len(submitted)==1
+    assert submitted[0]['components'][0]['example']['header_handle']==[handle]
+    with Session() as db:assert db.scalar(select(func.count()).select_from(Message))==0

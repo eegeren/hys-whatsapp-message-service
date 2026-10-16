@@ -129,13 +129,17 @@ def test_resumable_http_format_has_oauth_offset_and_raw_bytes(monkeypatch):
     '4::'+('a'*5000),
     '12:opaque/token?signature=abc%2Fdef&version=next',
     'opaque-meta-handle.with~new!alphabet',
+    '4::first-signed-handle\n4::second-signed-handle',
+    '4::first-signed-handle\r\n4::second-signed-handle',
+    '4::'+'a'*420+'\n'+'b'*427, # Synthetic 851-character value matching production's shape.
+
 ])
 def test_resumable_handle_is_opaque_and_forwarded_unchanged(monkeypatch,handle):
     from app.meta import upload_template_sample
     monkeypatch.setattr('app.meta.graph',lambda method,path,**kw:{'id':'upload:session'} if path=='app/uploads' else {'h':handle})
     assert upload_template_sample(MediaUpload('sample.png','image/png',PNG))==handle
 
-@pytest.mark.parametrize('handle',[None,123,{},'', '   ','bad\nhandle','x'*65537])
+@pytest.mark.parametrize('handle',[None,123,{},'', '   ','x'*65537])
 def test_invalid_handle_is_rejected_without_logging_its_value(monkeypatch,caplog,handle):
     from fastapi import HTTPException
     from app.meta import upload_template_sample
@@ -144,3 +148,14 @@ def test_invalid_handle_is_rejected_without_logging_its_value(monkeypatch,caplog
     assert exc.value.status_code==502
     assert 'sample_handle_invalid reason=' in caplog.text
     assert 'bad\nhandle' not in caplog.text and 'x'*100 not in caplog.text
+
+@pytest.mark.parametrize('result',[None,[],True,{}, {'h':None},{'h':12},{'file_offset':3}])
+def test_unfinished_or_malformed_upload_response_has_safe_diagnostics(monkeypatch,caplog,result):
+    from app.meta import upload_template_sample
+    monkeypatch.setattr('app.meta.graph',lambda method,path,**kw:{'id':'upload:session'} if path=='app/uploads' else result)
+    with pytest.raises(HTTPException) as exc:upload_template_sample(MediaUpload('sample.png','image/png',PNG))
+    assert exc.value.status_code==502
+    assert 'response_type=' in caplog.text and 'expected_bytes=' in caplog.text
+    if isinstance(result,dict) and result.get('file_offset')==3:
+        assert 'tamamlanmadı' in str(exc.value.detail)
+    assert settings.meta_access_token not in caplog.text

@@ -79,11 +79,15 @@ def upload_template_sample(asset,kind="IMAGE"):
     upload_id=session.get('id','')
     if not isinstance(upload_id,str) or not re.fullmatch(r'upload:[A-Za-z0-9_:=+-]+(?:\?sig=[A-Za-z0-9_.=-]+)?',upload_id):raise HTTPException(502,'Meta örnek medya yükleme oturumu doğrulanamadı.')
     result=graph('POST',upload_id,content=asset.content)
-    handle=result.get('h')
-    # Meta's h is opaque: do not impose a version, alphabet or 2 KB token format.
-    # It is forwarded unchanged in JSON, never interpreted as a URL or header.
-    reason='missing_or_wrong_type' if not isinstance(handle,str) else 'empty' if not handle.strip() else 'too_long' if len(handle)>65536 else 'control_character' if any(ord(c)<32 or ord(c)==127 for c in handle) else None
+    handle=result.get('h') if isinstance(result,dict) else None
+    # h is opaque JSON data, not a header or URL. Meta's own examples include
+    # embedded line breaks; preserve the complete value without splitting/stripping it.
+    reason='missing_or_wrong_type' if not isinstance(handle,str) else 'empty' if not handle.strip() else 'too_long' if len(handle)>65536 else None
     if reason:
-        logging.getLogger('hys.templates').warning('sample_handle_invalid reason=%s type=%s length=%s',reason,type(handle).__name__,len(handle) if isinstance(handle,str) else None)
-        raise HTTPException(502,'Meta örnek medya yükleme yanıtında geçerli bir h tanıtıcısı dönmedi. Teknik kayıtta neden belirtildi; dosyayı yeniden seçip açık onayla deneyin.')
+        offset=result.get('file_offset') if isinstance(result,dict) else None
+        offset=offset if type(offset) is int and offset>=0 else None
+        logging.getLogger('hys.templates').warning('sample_handle_invalid reason=%s type=%s length=%s response_type=%s has_h=%s file_offset=%s expected_bytes=%s',reason,type(handle).__name__,len(handle) if isinstance(handle,str) else None,type(result).__name__,isinstance(result,dict) and 'h' in result,offset,len(asset.content))
+        message={'missing_or_wrong_type':'Meta yükleme yanıtında dosya tanıtıcısı (h) metin olarak bulunamadı.','empty':'Meta yükleme yanıtında boş bir dosya tanıtıcısı döndü.','too_long':'Meta dosya tanıtıcısı uygulamanın güvenli boyut sınırını aştı.'}[reason]
+        if offset is not None and offset<len(asset.content):message+=f' Meta {len(asset.content)} baytın {offset} baytını bildirdi; dosya yüklemesi tamamlanmadı.'
+        raise HTTPException(502,message+' Teknik kayıtta yalnızca yanıt yapısı ve boyut bilgisi bulunur; dosya veya tanıtıcı içeriği kaydedilmez.')
     return handle
