@@ -3,7 +3,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 import pytest
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import select,func
 from app.core import *
 from app import staff
 
@@ -216,3 +216,61 @@ def test_import_still_requires_phone_column_and_valid_phone(client):
     r=client.post('/api/staff/import',files={'file':('staff.csv',b'Ad Soyad\nAli Veli\n')});assert r.status_code==422
     r=client.post('/api/staff/import',files={'file':('staff.csv',b'Telefon\ninvalid\n')})
     assert r.status_code==200 and r.json()['imported']==0 and len(r.json()['errors'])==1
+
+@pytest.mark.parametrize('cause,expected',[
+    ('staff_dispatch_enabled','STAFF_DISPATCH_ENABLED=false'),
+    ('deployment_send_lock','DEPLOYMENT_SEND_LOCK=true'),
+    ('live_send_enabled','LIVE_SEND_ENABLED=false'),
+    ('connection','doğrulamanın süresi dolmuş'),
+    ('confirmation','kutuyu işaretleyin'),
+])
+def test_live_approval_names_actual_blocker_without_enqueuing(client,prepared,monkeypatch,cause,expected):
+    live(monkeypatch)
+    if cause=='connection':monkeypatch.setattr(staff,'connection_ok',lambda db:False)
+    elif cause!='confirmation':monkeypatch.setattr(settings,cause,cause=='deployment_send_lock')
+    _,base,cfg=prepared
+    preview=client.post(base+'/preview',json=cfg);assert preview.status_code==200,preview.text
+    if cause!='confirmation':assert any(expected in reason for reason in preview.json()['send_blockers'])
+    response=client.post(base+'/send',json={'token':preview.json()['token'],'confirm_live':cause!='confirmation'})
+    assert response.status_code==403 and expected in response.json()['detail']
+    with Session() as db:
+        assert db.get(StaffAnnouncement,prepared[0]).status=='draft'
+        assert db.scalar(select(func.count()).select_from(StaffDelivery))==0
+
+
+def test_review_examples_and_json_order_do_not_pause_staff_send(client,prepared,monkeypatch):
+    live(monkeypatch);approve(client,prepared,True)
+    with Session() as db:
+        t=db.get(Template,prepared[2]['document_template']);parts=json.loads(t.components)
+        parts[0]['example']={'header_handle':['4::new-review-only-handle']};parts.reverse();t.components=json.dumps(parts,indent=2)
+        db.commit();delivery=db.scalar(select(StaffDelivery.id).order_by(StaffDelivery.id))
+    calls=[]
+    monkeypatch.setattr(staff,'upload_media',lambda *args:'123456')
+    monkeypatch.setattr(staff,'graph',lambda *args:calls.append(args) or {'messages':[{'id':'wamid.canonical.staff'}]})
+    assert staff.process_staff(delivery)
+    assert len(calls)==1
+    with Session() as db:
+        assert db.get(StaffAnnouncement,prepared[0]).status=='running'
+        assert db.get(StaffDelivery,delivery).status=='accepted'
+
+
+@pytest.mark.parametrize('cause,code',[
+    ('body','template_changed'),('sender','sender_changed'),('expired','media_expired'),('status','template_unavailable'),
+])
+def test_automatic_staff_pause_explains_blocker_and_never_sends(client,prepared,monkeypatch,cause,code):
+    live(monkeypatch);approve(client,prepared,True)
+    with Session() as db:
+        row=db.scalar(select(StaffDelivery).order_by(StaffDelivery.id));delivery=row.id
+        if cause=='body':db.get(Template,prepared[2]['document_template']).body+=' Changed'
+        if cause=='status':db.get(Template,prepared[2]['document_template']).status='PAUSED'
+        if cause=='sender':db.get(StaffAnnouncement,prepared[0]).sender_id='999999'
+        if cause=='expired':db.get(StaffAsset,row.asset_id).expires=now()-timedelta(seconds=1)
+        db.commit()
+    assert not staff.process_staff(delivery)
+    detail=client.get(prepared[1]).json();assert detail['announcement']['status']=='paused'
+    assert detail['announcement']['pause_code']==code and detail['announcement']['pause_reason']
+    assert detail['recipients'][0]['messages'][0]['status']=='queued'
+    assert detail['recipients'][0]['messages'][0]['error']
+    assert client.post(prepared[1]+'/resume',json={}).status_code==200
+    assert not staff.process_staff(delivery)
+    assert client.get(prepared[1]).json()['announcement']['pause_code']==code

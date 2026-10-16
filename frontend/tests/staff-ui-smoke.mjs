@@ -25,7 +25,7 @@ try{
  await page.getByText('Henüz örnek video eklenmedi',{exact:true}).waitFor();
  assert(await page.getByRole('button',{name:'Devam · Mesaj metni',exact:true}).isDisabled());
  await page.getByRole('button',{name:'Dosya eklemeye git',exact:true}).click();
- await page.getByLabel('PDF yükle').waitFor();
+ await page.getByRole('heading',{name:'2. PDF Yükle',exact:true}).waitFor();
  await page.getByRole('button',{name:'Şablon onayları',exact:true}).click();
  await page.locator('.staff-approval-summary article').first().getByRole('button').click();
  await page.waitForFunction(()=>Array.from(document.querySelectorAll('.staff-approval-wizard select')).some(el=>el.value));
@@ -48,9 +48,18 @@ try{
  await page.getByRole('button',{name:'Simülasyon taslağını kaydet',exact:true}).click();
  await page.getByText('Simülasyon taslağı kaydedildi.',{exact:false}).waitFor();
  await page.getByRole('button',{name:'Duyuru hazırla',exact:true}).click();
+ await page.locator('.staff-message-settings>summary').click();
  await page.getByLabel('Belge başlıklı onaylı şablon').selectOption({label:'hys_personel_document · tr'});
  if(process.env.VIDEO_UI_SAMPLE)await page.getByLabel('Video başlıklı onaylı şablon').selectOption({label:'hys_personel_video · tr'});
+ if(process.env.STAFF_READINESS_TEST){
+  await page.route(/\/api\/staff\/announcements\/\d+\/preview$/,async route=>{const response=await route.fetch();const data=await response.json();await route.fulfill({response,json:{...data,simulation:false,send_blockers:['API servisinde personel duyurusu kuyruğu kapalı (STAFF_DISPATCH_ENABLED=false).']}})});
+  await page.getByRole('button',{name:'Önizle',exact:true}).click();await page.getByRole('alert').filter({hasText:'STAFF_DISPATCH_ENABLED=false'}).waitFor();
+  await page.getByLabel('Bu alıcı listesine gerçek WhatsApp gönderimini onaylıyorum.').check();assert(await page.getByRole('button',{name:'Gönder',exact:true}).isDisabled());
+  await page.unroute(/\/api\/staff\/announcements\/\d+\/preview$/);
+ }
  await page.getByRole('button',{name:'Önizle',exact:true}).click();await page.getByText(process.env.VIDEO_UI_SAMPLE?'1 personel · 2 dosya · 2 toplam mesaj':'1 personel · 1 dosya · 1 toplam mesaj',{exact:true}).waitFor();
+ await page.locator('.staff-files-card').screenshot({path:'/tmp/hys-staff-files-clean.png'});await page.locator('.staff-send-card').screenshot({path:'/tmp/hys-staff-send-clean.png'});
+ await page.setViewportSize({width:390,height:844});await page.locator('.staff-send-card').screenshot({path:'/tmp/hys-staff-send-clean-mobile.png'});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.setViewportSize({width:1440,height:1000});
  await page.getByRole('button',{name:'Gönder · Simülasyon',exact:true}).click();await page.getByRole('button',{name:'Duraklat',exact:true}).waitFor();
  await page.getByRole('button',{name:'Duraklat',exact:true}).click();await page.getByRole('button',{name:'Devam et',exact:true}).waitFor();
  await page.getByRole('button',{name:'Kalanları iptal et',exact:true}).click();await page.getByText('İptal edildi',{exact:true}).first().waitFor();

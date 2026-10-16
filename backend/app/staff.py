@@ -17,7 +17,28 @@ from app.template_components import definitions,validate_upload,MediaUpload
 def announcement(db,id):return require(db,StaffAnnouncement,id)
 def editable(a):
     if a.status!='draft':raise HTTPException(409,'Gönderilmiş duyurunun alıcıları ve dosyaları değiştirilemez.')
-def summary(a):return {key:value for key,value in serial(a).items() if key not in ('config','preview_token','preview_expires')}
+def summary(a):
+    result={key:value for key,value in serial(a).items() if key not in ('config','preview_token','preview_expires')}
+    cfg=json.loads(a.config or '{}')
+    if a.status=='paused':
+        result['pause_reason']=cfg.get('pause_reason') or 'Duraklatma nedeni önceki sürümde kaydedilmemiş. Devam et ile koşullar yeniden kontrol edilir.'
+        result['pause_code']=cfg.get('pause_code','unknown')
+    return result
+
+def staff_template_matches(t,saved):
+    # Use the existing canonical definition: review samples and JSON formatting
+    # do not change the message the operator approved. Real content/identity does.
+    from app.bulk import canonical_components
+    if not isinstance(saved,dict):return False
+    if any(getattr(t,key)!=saved.get(key) for key in ('id','name','language','category','status','body','meta_id')):return False
+    try:return canonical_components(t.components,t.body)==canonical_components(saved.get('components','[]'),saved.get('body',''))
+    except (HTTPException,ValueError,TypeError):return False
+
+def pause_staff(db,a,row,code,message):
+    cfg=json.loads(a.config);cfg.update(pause_code=code,pause_reason=message,pause_at=now().isoformat())
+    a.config=json.dumps(cfg);a.status='paused';row.error=message
+    audit(db,'system','staff_auto_pause',f'{a.id}; {code}');db.commit()
+
 def assets(db,id):return list(db.scalars(select(StaffAsset).where(StaffAsset.announcement_id==id).order_by(StaffAsset.position)))
 def window_open(db,n):
     last=db.scalar(select(func.max(Message.created)).where(Message.phone==n,Message.direction=='in'))
@@ -162,6 +183,15 @@ def attach_video(id:int,data:PreparedVideo,user=Depends(admin),db=Depends(db_ses
     db.add(StaffAsset(announcement_id=id,position=len(files),filename=Path(job.filename).stem+'.mp4',kind='video',content_type='video/mp4',content=job.output,size=job.output_size,digest=digest,expires=job.expires,video_job_id=job.id))
     a.preview_token='';db.commit();return {'ok':True}
 
+def live_send_blockers(db):
+    if settings.dry_run:return []
+    blockers=[]
+    if not settings.staff_dispatch_enabled:blockers.append('API servisinde personel duyurusu kuyruğu kapalı (STAFF_DISPATCH_ENABLED=false). Worker servisinin tek başına açık olması yeterli değildir.')
+    if settings.deployment_send_lock:blockers.append('API servisinde dağıtım gönderim kilidi açık (DEPLOYMENT_SEND_LOCK=true).')
+    if not settings.live_send_enabled:blockers.append('API servisinde canlı gönderim kapalı (LIVE_SEND_ENABLED=false).')
+    if not connection_ok(db):blockers.append('Meta bağlantısı doğrulanmamış veya doğrulamanın süresi dolmuş. Ayarlar → Meta bağlantısı bölümünden bağlantıyı yeniden doğrulayın.')
+    return blockers
+
 @app.post('/api/staff/announcements/{id}/preview')
 def preview(id:int,data:Selection,user=Depends(admin),db=Depends(db_session)):
     a=announcement(db,id);editable(a);cfg=data.model_dump()
@@ -177,7 +207,7 @@ def preview(id:int,data:Selection,user=Depends(admin),db=Depends(db_session)):
     prices=[settings.staff_document_unit_price if f.kind=='document' else settings.staff_video_unit_price for f in files]
     cost=None if any(p is None for p in prices) else sum(prices)*paid/len(files)
     a.config=json.dumps(cfg);a.preview_token=secrets.token_hex(32);a.preview_expires=now()+timedelta(minutes=10);db.commit()
-    return {'token':a.preview_token,'people':len(recipients),'files':len(files),'paid_messages':paid,'paid_messages_upper_bound':len(recipients)*len(files),'estimated_cost':cost,'currency':settings.staff_price_currency,'simulation':settings.dry_run,'recipients':[{'name':(c.first_name+' '+c.last_name).strip(),'phone':c.phone,'store':c.store} for c in recipients],'template_bodies':{'document':doc.body,'video':vid.body if vid else ''},'notice':'Pencere gönderim anında tekrar kontrol edilir; ücretli mesaj sayısı artabilir. Ücret tahminidir.'}
+    return {'send_blockers':live_send_blockers(db),'token':a.preview_token,'people':len(recipients),'files':len(files),'paid_messages':paid,'paid_messages_upper_bound':len(recipients)*len(files),'estimated_cost':cost,'currency':settings.staff_price_currency,'simulation':settings.dry_run,'recipients':[{'name':(c.first_name+' '+c.last_name).strip(),'phone':c.phone,'store':c.store} for c in recipients],'template_bodies':{'document':doc.body,'video':vid.body if vid else ''},'notice':'Pencere gönderim anında tekrar kontrol edilir; ücretli mesaj sayısı artabilir. Ücret tahminidir.'}
 
 @app.post('/api/staff/announcements/{id}/send')
 def approve(id:int,data:Approval,user=Depends(admin),db=Depends(db_session)):
@@ -185,13 +215,16 @@ def approve(id:int,data:Approval,user=Depends(admin),db=Depends(db_session)):
     if not a:raise HTTPException(404,'Duyuru bulunamadı.')
     if a.status!='draft':return {'id':id,'status':a.status,'duplicate':True}
     if not a.preview_token or not secrets.compare_digest(data.token,a.preview_token) or not a.preview_expires or a.preview_expires<now():raise HTTPException(409,'Önizlemeyi yenileyin.')
-    if not settings.dry_run and (not data.confirm_live or not settings.staff_dispatch_enabled or settings.deployment_send_lock or not settings.live_send_enabled or not connection_ok(db)):raise HTTPException(403,'Panelde canlı gönderim onayı ve etkin Meta/worker bağlantısı gerekli.')
+    if not settings.dry_run:
+        blockers=live_send_blockers(db)
+        if not data.confirm_live:blockers.insert(0,'Panelde gerçek WhatsApp gönderimini onaylayan kutuyu işaretleyin.')
+        if blockers:raise HTTPException(403,'Gönderim başlatılmadı. '+' '.join(blockers))
     cfg=json.loads(a.config)
     if cfg['phone_number_id']!=settings.meta_phone_number_id or cfg['waba_id']!=settings.meta_waba_id:raise HTTPException(409,'Meta hesabı değişti; önizlemeyi yenileyin.')
     files=assets(db,id)
     if any(f.expires<=now() or not f.content for f in files):raise HTTPException(409,'Dosyalar zaman aşımına uğradı.')
     for key,saved in cfg['templates'].items():
-        if serial(require(db,Template,int(key)))!=saved:raise HTTPException(409,'Şablon değişti; önizlemeyi yenileyin.')
+        if not staff_template_matches(require(db,Template,int(key)),saved):raise HTTPException(409,'Şablon değişti; önizlemeyi yenileyin.')
     for cid in cfg['recipients']:
         c=require(db,Contact,cid)
         if c.kind!='staff' or blocked(db,c) or [c.phone,c.first_name,c.last_name,c.store]!=cfg['recipient_snapshot'][str(cid)]:raise HTTPException(409,'Alıcı listesi değişti; önizlemeyi yenileyin.')
@@ -205,6 +238,12 @@ def control(id:int,action:str,user=Depends(admin),db=Depends(db_session)):
     if not a:raise HTTPException(404,'Duyuru bulunamadı.')
     if action not in ('pause','resume','cancel'):raise HTTPException(404,'İşlem bulunamadı.')
     if action=='resume' and a.status!='paused' or action=='pause' and a.status!='running' or action=='cancel' and a.status not in ('draft','running','paused'):raise HTTPException(409,'Bu durumda işlem yapılamaz.')
+    cfg=json.loads(a.config)
+    if action=='pause':cfg.update(pause_code='manual',pause_reason='Yönetici tarafından duraklatıldı.',pause_at=now().isoformat())
+    else:
+        for key in ('pause_code','pause_reason','pause_at'):cfg.pop(key,None)
+    a.config=json.dumps(cfg)
+    if action=='resume':db.execute(update(StaffDelivery).where(StaffDelivery.announcement_id==id,StaffDelivery.status=='queued').values(error=''))
     a.status={'pause':'paused','resume':'running','cancel':'cancelled'}[action]
     if action=='cancel':
         db.execute(update(StaffDelivery).where(StaffDelivery.announcement_id==id,StaffDelivery.status=='queued').values(status='cancelled'))
@@ -266,11 +305,15 @@ def process_staff(id):
         if not c or c.kind!='staff' or c.phone!=r.phone or blocked(db,c):r.status='failed';r.error='Alıcı devre dışı veya ret kaydı var.';db.commit();return False
         if a.simulation:r.status='dry_run';db.commit();return True
         if settings.dry_run or not settings.staff_dispatch_enabled or settings.deployment_send_lock or not settings.live_send_enabled or not connection_ok(db):return False
-        if a.sender_id!=settings.meta_phone_number_id or cfg['waba_id']!=settings.meta_waba_id:a.status='paused';db.commit();return False
-        if f.expires<=now():a.status='paused';r.error='Medya süresi doldu; yeni duyuru hazırlayın.';db.commit();return False
+        if a.sender_id!=settings.meta_phone_number_id or cfg['waba_id']!=settings.meta_waba_id:
+            pause_staff(db,a,r,'sender_changed','Duyurunun Meta hesabı worker hesabıyla eşleşmiyor. API ve worker aynı telefon numarası ID ve WABA hesabını kullanmalı.');return False
+        if f.expires<=now():
+            pause_staff(db,a,r,'media_expired','Medya süresi doldu; yeni duyuru hazırlayın.');return False
         try:t=template(db,cfg['document_template'] if f.kind=='document' else cfg['video_template'],f.kind)
-        except HTTPException:a.status='paused';r.error='Onaylı şablon kullanılamıyor.';db.commit();return False
-        if serial(t)!=cfg['templates'][str(t.id)]:a.status='paused';db.commit();return False
+        except HTTPException:
+            pause_staff(db,a,r,'template_unavailable','Onaylı şablon kullanılamıyor. Şablon durumunu kontrol edip yeni önizlemeyle yeni duyuru hazırlayın.');return False
+        if not staff_template_matches(t,cfg['templates'].get(str(t.id))):
+            pause_staff(db,a,r,'template_changed','Şablonun metni, türü veya kimliği onaydan sonra değişti. Güncel şablonla yeni duyuru ve önizleme hazırlayın.');return False
         from app.worker import reserve_bulk_slot
         if not reserve_bulk_slot(db):return False
         # CAS + committed claim before any network call: ambiguous/crashed sends never retry.
