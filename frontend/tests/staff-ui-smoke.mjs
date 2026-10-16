@@ -10,6 +10,7 @@ try{
  await page.locator('input[name="username"]').fill('uiadmin');await page.locator('input[name="password"]').fill('UITestPassword123!');await page.getByRole('button',{name:'Giriş yap',exact:true}).click();
  await page.getByRole('button',{name:'Personel Duyuruları',exact:true}).click();
  await page.getByRole('heading',{name:'Personel Duyuruları',exact:true}).waitFor();
+ await page.getByText('Henüz Excel yüklenmedi.',{exact:false}).waitFor();assert.equal(await page.locator('.staff-choice').count(),0);await page.getByRole('button',{name:'Kayıtlı personelleri kullan',exact:true}).click();
  await page.getByLabel('PDF yükle').setInputFiles({name:'duyuru.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 staff ui')});
  await page.getByText('1. duyuru.pdf',{exact:false}).waitFor();
  if(process.env.VIDEO_UI_SAMPLE){

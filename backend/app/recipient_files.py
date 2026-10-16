@@ -23,6 +23,12 @@ def read_rows(raw,filename):
     if len(raw)>5*1024*1024:raise HTTPException(413,'Dosya en fazla 5 MB olabilir.')
     try:
         ext=Path(filename or '').suffix.lower()
+        if ext not in ('.xlsx','.xls','.csv'):raise ValueError('XLSX, XLS veya CSV dosyası seçin.')
+        # Export tools may label an OOXML workbook .xls (or BIFF .xlsx).
+        # Select the reader by the container signature, retaining all input limits.
+        if ext in ('.xlsx','.xls'):
+            if raw.startswith((b'PK\x03\x04',b'PK\x05\x06',b'PK\x07\x08')):ext='.xlsx'
+            elif raw.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'):ext='.xls'
         if ext=='.xlsx':
             from openpyxl import load_workbook
             with zipfile.ZipFile(io.BytesIO(raw)) as archive:

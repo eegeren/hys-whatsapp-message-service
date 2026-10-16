@@ -274,3 +274,32 @@ def test_automatic_staff_pause_explains_blocker_and_never_sends(client,prepared,
     assert client.post(prepared[1]+'/resume',json={}).status_code==200
     assert not staff.process_staff(delivery)
     assert client.get(prepared[1]).json()['announcement']['pause_code']==code
+
+
+def test_import_returns_only_current_file_ids_and_preview_excludes_saved_people(client,prepared):
+    raw='Ad Soyad,Telefon,Mağaza\nYeni Personel,05321234570,A\nYeni Personel,05321234570,A\nHatalı,invalid,A\n'
+    response=client.post('/api/staff/import',files={'file':('current.csv',raw.encode(),'text/csv')})
+    assert response.status_code==200,response.text
+    imported=response.json();assert imported['imported']==1 and len(imported['contact_ids'])==1
+    assert imported['duplicates']==1 and len(imported['errors'])==1
+    _,base,cfg=prepared
+    scoped=client.post(base+'/preview',json={**cfg,'source_people':imported['contact_ids']})
+    assert scoped.status_code==200,scoped.text
+    assert scoped.json()['people']==1 and scoped.json()['recipients'][0]['phone']=='+905321234570'
+    # A malicious/stale explicit selection cannot escape this upload's scope.
+    with Session() as db:old_id=db.scalar(select(Contact.id).where(Contact.phone=='+905321234567',Contact.kind=='staff'))
+    denied=client.post(base+'/preview',json={**cfg,'source_people':imported['contact_ids'],'target':'people','people':[old_id]})
+    assert denied.status_code==422
+    assert client.post(base+'/preview',json={**cfg,'source_people':[]}).status_code==422
+    # Explicitly opting into stored people retains the existing supported behavior.
+    assert client.post(base+'/preview',json={**cfg,'source_people':None}).json()['people']==3
+
+
+def test_reimport_ids_include_existing_records_without_restoring_opted_out_people(client,prepared):
+    with Session() as db:
+        person=db.scalar(select(Contact).where(Contact.phone=='+905321234567',Contact.kind=='staff'));person.opted_out=True;old_id=person.id;db.commit()
+    response=client.post('/api/staff/import',files={'file':('current.csv',b'Telefon\n05321234567\n','text/csv')})
+    assert response.status_code==200 and response.json()['contact_ids']==[old_id]
+    _,base,cfg=prepared
+    assert client.post(base+'/preview',json={**cfg,'source_people':[old_id]}).status_code==422
+    with Session() as db:assert db.get(Contact,old_id).opted_out

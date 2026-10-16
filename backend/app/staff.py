@@ -52,6 +52,7 @@ def template(db,id,kind):
 
 def chosen(db,cfg):
     q=select(Contact).where(Contact.kind=='staff')
+    if cfg.get('source_people') is not None:q=q.where(Contact.id.in_(cfg['source_people']))
     if cfg['target']=='stores':q=q.where(Contact.store.in_(cfg['stores']))
     elif cfg['target']=='people':q=q.where(Contact.id.in_(cfg['people']))
     return [c for c in db.scalars(q.order_by(Contact.id)) if not blocked(db,c)]
@@ -61,6 +62,7 @@ class Selection(BaseModel):
     target:str='all'
     stores:list[str]=Field(default_factory=list,max_length=1000)
     people:list[int]=Field(default_factory=list,max_length=10000)
+    source_people:list[int]|None=Field(default=None,max_length=10000)
     document_template:int
     video_template:int | None=None
 class Approval(BaseModel):
@@ -78,7 +80,7 @@ async def import_staff(file:UploadFile=File(...),user=Depends(admin),db=Depends(
     def column(names):return next((i for i,h in enumerate(headers) if h in names),None)
     ni=column({'adsoyad','adisoyadi','isimsoyisim','fullname','name','ad','isim'});pi=column({'telefon','telefonnumarasi','telefonno','phone','gsm','ceptelefonu'});si=column({'magaza','magazaadi','store'})
     if pi is None:raise HTTPException(422,'Telefon sütunu zorunludur. Ad Soyad ve Mağaza isteğe bağlıdır.')
-    errors=[];seen=set();count=0;duplicates=0
+    errors=[];seen=set();count=0;duplicates=0;imported_contacts=[]
     if len(rows)>10001:raise HTTPException(422,'En fazla 10.000 personel yükleyin.')
     for index,row in enumerate(rows[1:],2):
         if not any(str(v or '').strip() for v in row):continue
@@ -91,9 +93,9 @@ async def import_staff(file:UploadFile=File(...),user=Depends(admin),db=Depends(
         if not c:c=Contact(kind='staff',phone=n,first_name=name);db.add(c)
         if name:c.first_name=name;c.last_name=''
         if store:c.store=store
-        count+=1
+        count+=1;imported_contacts.append(c)
     audit(db,user.username,'staff_import',f'{count} kayıt; {len(errors)} hata');db.commit()
-    return {'imported':count,'duplicates':duplicates,'errors':errors}
+    return {'imported':count,'duplicates':duplicates,'errors':errors,'contact_ids':[c.id for c in imported_contacts]}
 
 @app.post('/api/staff/announcements')
 def create(data:Draft,user=Depends(admin),db=Depends(db_session)):
