@@ -303,3 +303,35 @@ def test_reimport_ids_include_existing_records_without_restoring_opted_out_peopl
     _,base,cfg=prepared
     assert client.post(base+'/preview',json={**cfg,'source_people':[old_id]}).status_code==422
     with Session() as db:assert db.get(Contact,old_id).opted_out
+
+@pytest.mark.parametrize('errors',[None,{},[None],[],[{'code':[]}],[{'code':True}]])
+def test_staff_delivery_error_malformed(errors):
+    assert 'Otomatik tekrar yapılmaz.' in staff.staff_delivery_error({'errors':errors})
+
+@pytest.mark.parametrize('code',[130429,131056,131048,131049,131026])
+def test_staff_delivery_error_has_code_without_retry_promise(code):
+    message=staff.staff_delivery_error({'errors':[{'code':code,'details':'Bearer private-token'}]})
+    assert f'kod {code}' in message and 'private-token' not in message
+    assert 'yeniden dene' not in message and 'duraklatılır' not in message
+
+def test_staff_webhook_errors_and_historical_details(client,prepared):
+    approve(client,prepared)
+    with Session() as db:
+        rows=list(db.scalars(select(StaffDelivery).order_by(StaffDelivery.id)))
+        first_id=rows[0].id;rows[0].meta_id='wamid.failure-test';rows[0].status='accepted';db.commit()
+    from tests.test_webhook_production import envelope,post
+    payload={'id':'wamid.failure-test','status':'failed','errors':[{'code':131049,'error_data':{'details':'Recipient limit Bearer private-token'}}]}
+    assert post(client,envelope(statuses=[payload])).status_code==200
+    with Session() as db:
+        row=db.get(StaffDelivery,first_id)
+        assert row.status=='failed' and 'kod 131049' in row.error and 'private-token' not in row.error
+        row.error='Meta teslimat hatası; otomatik tekrar yapılmaz.';db.commit()
+    messages=[m for r in client.get(prepared[1]).json()['recipients'] for m in r['messages']]
+    error=next(m['error'] for m in messages if m['id']==first_id)
+    assert 'kod 131049' in error and 'Recipient limit' in error and 'private-token' not in error
+    assert all('131049' not in m['error'] for m in messages if m['id']!=first_id)
+    with Session() as db:
+        assert db.get(StaffDelivery,first_id).error=='Meta teslimat hatası; otomatik tekrar yapılmaz.'
+        staff.staff_delivery(db,{'id':'wamid.failure-test','status':'read'})
+        staff.staff_delivery(db,payload)
+        assert db.get(StaffDelivery,first_id).status=='read'

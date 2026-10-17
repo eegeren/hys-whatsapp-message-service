@@ -9,7 +9,7 @@ from sqlalchemy import select,update,func,exists
 from sqlalchemy.orm import aliased
 from app.core import *
 from app.main import app,admin,db_session,require,serial,connection_ok
-from app.meta import graph,upload_media
+from app.meta import graph,upload_media,safe_meta_text,delivery_error_message
 from app.recipient_files import read_rows,header,cell_phone
 from app.template_components import definitions,validate_upload,MediaUpload
 
@@ -259,20 +259,47 @@ def detail(id:int,page:int=1,user=Depends(admin),db=Depends(db_session)):
     page=max(1,min(page,max(1,(total+49)//50)))
     contacts=list(db.scalars(select(StaffDelivery.contact_id).where(StaffDelivery.announcement_id==id).distinct().order_by(StaffDelivery.contact_id).offset((page-1)*50).limit(50)))
     rows=list(db.scalars(select(StaffDelivery).where(StaffDelivery.announcement_id==id,StaffDelivery.contact_id.in_(contacts)).order_by(StaffDelivery.id)))
+    historical={}
+    failed_ids=[r.meta_id for r in rows if r.status=='failed' and r.meta_id]
+    if failed_ids:
+        for event in db.scalars(select(WebhookItem).where(WebhookItem.kind=='status',WebhookItem.meta_id.in_(failed_ids)).order_by(WebhookItem.created,WebhookItem.id)):
+            try:payload=json.loads(event.payload)
+            except (ValueError,TypeError):continue
+            if isinstance(payload,dict) and payload.get('status')=='failed':historical[event.meta_id]=staff_delivery_error(payload)
     grouped={};rank={'queued':0,'sending':0,'accepted':1,'sent':1,'delivered':2,'read':3,'dry_run':4}
     for r in rows:
-        g=grouped.setdefault(r.contact_id,{'name':r.name,'phone':r.phone,'store':r.store,'messages':[]});g['messages'].append(serial(r))
+        message=serial(r)
+        if r.status=='failed' and r.meta_id in historical:message['error']=historical[r.meta_id]
+        g=grouped.setdefault(r.contact_id,{'name':r.name,'phone':r.phone,'store':r.store,'messages':[]});g['messages'].append(message)
     for g in grouped.values():
         statuses=[r['status'] for r in g['messages']]
         g['status']=next((s for s in ('uncertain','failed','cancelled') if s in statuses),min(statuses,key=lambda s:rank.get(s,0)))
     return {'announcement':summary(a),'page':page,'recipient_total':total,'pages':max(1,(total+49)//50),'files':[{'id':f.id,'filename':f.filename,'kind':f.kind,'size':f.size,'video_job_id':f.video_job_id} for f in files],'recipients':list(grouped.values())}
+
+def staff_delivery_error(item):
+    errors=item.get('errors')
+    error=next((e for e in errors if isinstance(e,dict)),{}) if isinstance(errors,list) else {}
+    code=error.get('code')
+    if isinstance(code,str) and code.isdigit():code=int(code)
+    if not isinstance(code,int) or isinstance(code,bool):code=None
+    # Staff delivery failures are never automatically retried. Do not inherit
+    # customer campaign retry/pause promises from the shared description.
+    if code in (4,80007,130429,131056):message='Meta gönderim hız sınırına ulaşıldı.'
+    elif code==131048:message='Meta spam/kalite sınırı uyguladı; hesap kalitesini kontrol edin.'
+    else:message=delivery_error_message(code)
+    if code is not None:message+=f' (kod {code})'
+    data=error.get('error_data')
+    reason=safe_meta_text(error.get('details') or (data.get('details') if isinstance(data,dict) else ''))
+    if reason:message+=' Meta ayrıntısı: '+reason
+    if 'Otomatik tekrar yapılmaz.' not in message:message+=' Otomatik tekrar yapılmaz.'
+    return message
 
 def staff_delivery(db,item):
     row=db.scalar(select(StaffDelivery).where(StaffDelivery.meta_id==item['id']))
     if not row:return
     new=item.get('status');rank={'accepted':0,'sent':1,'delivered':2,'read':3}
     if new in rank and rank[new]>rank.get(row.status,-1) and (row.status!='failed' or new in ('delivered','read')):row.status=new;row.error=''
-    elif new=='failed' and row.status not in ('delivered','read'):row.status='failed';row.error='Meta teslimat hatası; otomatik tekrar yapılmaz.'
+    elif new=='failed' and row.status not in ('delivered','read'):row.status='failed';row.error=staff_delivery_error(item)
 
 def dispatch_staff(limit=1):
     with Session() as db:
