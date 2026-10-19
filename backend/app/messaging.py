@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 import hashlib, re
 from pydantic import BaseModel, Field
-from sqlalchemy import select,func
+from sqlalchemy import select,func,case
 from sqlalchemy.exc import IntegrityError
 from app.core import *
 from app.main import app, actor, admin, db_session, serial, require, connection_ok
@@ -20,17 +20,17 @@ def conversation_key(value:str):return hashlib.sha256(value.encode()).hexdigest(
 
 @app.get('/api/conversations')
 def conversations(user=Depends(actor),db=Depends(db_session)):
-    rows=db.scalars(select(Message).where(phone_clause(db,user,Message.phone)).order_by(Message.created.desc(),Message.id.desc()).limit(10000)).all()
-    grouped={}
-    for m in rows:
-        item=grouped.get(m.phone)
-        if item is None:
-            item={'key':conversation_key(m.phone),'phone':m.phone,'last_body':m.body,'last_direction':m.direction,'last_status':m.status,'last_at':m.created.isoformat(),'unread':0,'last_incoming_id':0}
-            grouped[m.phone]=item
-        if m.direction=='in':item['last_incoming_id']=max(item['last_incoming_id'],m.id)
-        if m.direction=='in' and m.unread:item['unread']+=1
+    # Keep the existing authorized 10,000-message window and response contract.
+    # Aggregate in SQL instead of constructing thousands of Message ORM objects.
+    recent=select(Message.id,Message.phone,Message.body,Message.direction,Message.status,Message.created,Message.unread).where(phone_clause(db,user,Message.phone)).order_by(Message.created.desc(),Message.id.desc()).limit(10000).subquery()
+    ranked=select(recent,
+        func.row_number().over(partition_by=recent.c.phone,order_by=(recent.c.created.desc(),recent.c.id.desc())).label('position'),
+        func.sum(case(((recent.c.direction=='in') & recent.c.unread,1),else_=0)).over(partition_by=recent.c.phone).label('unread_count'),
+        func.max(case((recent.c.direction=='in',recent.c.id),else_=0)).over(partition_by=recent.c.phone).label('last_incoming_id')).subquery()
+    rows=db.execute(select(ranked).where(ranked.c.position==1).order_by(ranked.c.created.desc(),ranked.c.id.desc())).mappings()
+    grouped=[{'key':conversation_key(m['phone']),'phone':m['phone'],'last_body':m['body'],'last_direction':m['direction'],'last_status':m['status'],'last_at':m['created'].isoformat(),'unread':m['unread_count'],'last_incoming_id':m['last_incoming_id']} for m in rows]
     from app.operations import decorate_conversations
-    return decorate_conversations(db,user,sorted(grouped.values(),key=lambda x:x['last_at'],reverse=True))
+    return decorate_conversations(db,user,grouped)
 
 def verified_whatsapp_consent(contacts):
     return any(c.active and c.preference=='whatsapp' and c.consent=='verified' and
@@ -66,8 +66,9 @@ def conversation_eligibility(phone_number:str,user=Depends(actor),db=Depends(db_
 @app.get('/api/conversations/{key}')
 def conversation_detail(key:str,page:int=1,user=Depends(actor),db=Depends(db_session)):
     if not re.fullmatch(r'[a-f0-9]{64}',key):raise HTTPException(404,'Konuşma bulunamadı')
-    rows=db.scalars(select(Message).where(phone_clause(db,user,Message.phone)).order_by(Message.created.desc(),Message.id.desc()).limit(10000)).all()
-    phone_value=next((m.phone for m in rows if conversation_key(m.phone)==key),None)
+    recent=select(Message.phone).where(phone_clause(db,user,Message.phone)).order_by(Message.created.desc(),Message.id.desc()).limit(10000).subquery()
+    phones=db.scalars(select(recent.c.phone).distinct())
+    phone_value=next((value for value in phones if conversation_key(value)==key),None)
     if phone_value is None:raise HTTPException(404,'Konuşma bulunamadı')
     authorize_phone(db,user,phone_value)
     items=db.scalars(select(Message).where(Message.phone==phone_value).order_by(Message.created.desc(),Message.id.desc()).offset((max(1,page)-1)*100).limit(100)).all()

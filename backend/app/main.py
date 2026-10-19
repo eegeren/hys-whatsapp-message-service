@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, and_, or_
 from sqlalchemy.exc import IntegrityError
 from argon2 import PasswordHasher
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,9 +135,14 @@ def list_users(user=Depends(admin),db=Depends(db_session)):
 def dashboard(user=Depends(actor),db=Depends(db_session)):
     from app.operations_access import phone_clause,allowed_store,scope_for
     scope=scope_for(db,user);restricted=scope is not None and not scope.unrestricted
-    contacts=db.scalars(select(Contact).where(phone_clause(db,user,Contact.phone))).all()
+    # Match eligible() for customer counters, without hydrating the contact list.
+    customer=Contact.kind=='customer'
+    customer_eligible=and_(Contact.active==True,Contact.opted_out==False,Contact.preference=='whatsapp',Contact.consent=='verified',Contact.scope=='marketing',or_(
+        and_(Contact.iys_status=='external_verified',Contact.source=='HYS harici satış programı',Contact.evidence.startswith('external_marketing_export:',autoescape=True)),
+        and_(Contact.iys_status=='manual_verified',Contact.evidence!='',Contact.source!='',Contact.consent_date!='')))
+    counts=db.execute(select(func.count(Contact.id).filter(customer),func.count(Contact.id).filter(customer,customer_eligible),func.count(Contact.id).filter(Contact.kind=='staff')).where(phone_clause(db,user,Contact.phone))).one()
     statuses=dict(db.execute(select(Message.status,func.count(Message.id)).where(Message.direction=='out',phone_clause(db,user,Message.phone)).group_by(Message.status)).all())
-    return {'customers':sum(c.kind=='customer' for c in contacts),'eligible':sum(c.kind=='customer' and eligible(c) for c in contacts),'staff':sum(c.kind=='staff' for c in contacts),'stores':sum(allowed_store(db,user,s.id) for s in db.scalars(select(Store))),'today':db.scalar(select(func.count(Message.id)).where(Message.created>=today_start(),phone_clause(db,user,Message.phone),Message.direction=='out',Message.status.in_(['accepted','sent','delivered','read']))),'statuses':statuses,'active':None if restricted else db.scalar(select(func.count(Campaign.id)).where(Campaign.status.in_(['running','scheduled']))),'pending_staff':None if restricted else db.scalar(select(func.count(Campaign.id)).where(Campaign.kind=='staff',Campaign.status.in_(['draft','scheduled']))),'connection':connection_ok(db),'dry_run':settings.dry_run,'cost':None}
+    return {'customers':counts[0],'eligible':counts[1],'staff':counts[2],'stores':sum(allowed_store(db,user,s.id) for s in db.scalars(select(Store))),'today':db.scalar(select(func.count(Message.id)).where(Message.created>=today_start(),phone_clause(db,user,Message.phone),Message.direction=='out',Message.status.in_(['accepted','sent','delivered','read']))),'statuses':statuses,'active':None if restricted else db.scalar(select(func.count(Campaign.id)).where(Campaign.status.in_(['running','scheduled']))),'pending_staff':None if restricted else db.scalar(select(func.count(Campaign.id)).where(Campaign.kind=='staff',Campaign.status.in_(['draft','scheduled']))),'connection':connection_ok(db),'dry_run':settings.dry_run,'cost':None}
 @app.get('/api/health')
 def health(db=Depends(db_session)):
     db.execute(select(1));return {'ok':True,'dry_run':settings.dry_run}
