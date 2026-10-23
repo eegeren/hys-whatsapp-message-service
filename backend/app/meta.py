@@ -65,7 +65,13 @@ def graph(method,path,payload=None,params=None,files=None,content=None):
     return result
 
 def upload_media(filename,content,content_type):
-    result=graph('POST',f'{settings.meta_phone_number_id}/media',{'messaging_product':'whatsapp'},files={'file':(filename,content,content_type)})
+    try:
+        result=graph('POST',f'{settings.meta_phone_number_id}/media',{'messaging_product':'whatsapp'},files={'file':(filename,content,content_type)})
+    except HTTPException as exc:
+        context=f' Meta medya yükleme aşaması: {len(content)} bayt. Mesaj gönderilmedi.'
+        if isinstance(exc.detail,dict):
+            raise HTTPException(exc.status_code,{**exc.detail,'message':exc.detail.get('message','Meta medya yükleme hatası.')+context}) from exc
+        raise HTTPException(exc.status_code,str(exc.detail)+context) from exc
     media_id=result.get('id')
     if not isinstance(media_id,str) or not re.fullmatch(r'\d+',media_id):raise HTTPException(502,'Meta medya yükleme kimliğini doğrulayamadı; mesaj gönderilmedi.')
     return media_id

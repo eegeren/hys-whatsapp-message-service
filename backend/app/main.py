@@ -1,7 +1,7 @@
 import hashlib, secrets, json, time
 from datetime import datetime, timedelta
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, Request, Response
+from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, text, and_, or_
@@ -166,5 +166,24 @@ def worker_health(user=Depends(admin)):
     return {'healthy':bool(heartbeat),'dispatch_enabled':settings.bulk_dispatch_enabled,'deployment_send_lock':settings.deployment_send_lock}
 
 from app import contacts, campaigns, messaging, test_messages, bulk, carousel_templates, staff, media_templates, video_jobs, incoming_media, quick_replies, staff_accounts, operations
+@app.post('/api/media/inspect')
+def inspect_media(file:UploadFile=File(...),browser_bytes:int=Form(...,ge=0),user=Depends(actor)):
+    """Local validation only: no Meta upload, message, storage, or conversion."""
+    from app.template_components import MediaUpload,validate_upload,MEDIA_TYPES
+    import logging
+    try:
+        kind=next((k for k,(_,_,types) in MEDIA_TYPES.items() if file.content_type in types),None)
+        if not kind:raise HTTPException(422,'Desteklenmeyen medya türü.')
+        received=file.size
+        logging.getLogger('hys.media').info('media_inspect browser_bytes=%s received_bytes=%s conversion=none',browser_bytes,received)
+        if received!=browser_bytes:
+            raise HTTPException(422,f'Dosya boyutları eşleşmiyor: tarayıcı {browser_bytes} bayt, backend {received} bayt.')
+        limit=MEDIA_TYPES[kind][1]
+        if received and received>limit:raise HTTPException(413,f'Backend {received} bayt aldı; sınır {limit} bayt. Dönüşüm uygulanmadı.')
+        content=file.file.read(limit+1)
+        validate_upload(kind,MediaUpload(file.filename or 'medya',file.content_type,content))
+        return {'browser_bytes':browser_bytes,'received_bytes':received,'conversion_applied':False,'output_bytes':len(content),'codec_validation':'not_performed','message_sent':False}
+    finally:file.file.close()
+
 web=Path(__file__).resolve().parents[1]/'web'
 if web.exists():app.mount('/',StaticFiles(directory=str(web),html=True),name='web')

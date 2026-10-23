@@ -1,3 +1,4 @@
+import {api} from './api';
 import AuthPanel from './AuthPanel';
 import WebhookPanel from './WebhookPanel';
 import Workspace from './Workspace';
@@ -9,7 +10,6 @@ import './ui-polish.css';
 import './whatsapp.css';
 import TestMessagePanel from './TestMessagePanel';
 type Row=Record<string,any>;
-async function api(path:string,method='GET',body?:any){const r=await fetch('/api'+path,{method,headers:{'X-HYS-Request':'1',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},body:body?body instanceof FormData?body:JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:d.detail?.message?(d.detail.message+(d.detail.code!==undefined?' (Meta hata kodu: '+d.detail.code+')':'')):'İşlem tamamlanamadı. Girilen bilgileri kontrol edin.');return d;}
 const nav=[['Genel Bakış',LayoutDashboard],['Müşteriler',Users],['Müşteri İzinleri',ShieldCheck],['Müşteri Kampanyaları',Megaphone],['Personeller',BriefcaseBusiness],['Mağazalar',Store],['Personel Duyuruları',MessagesSquare],['Mesaj Şablonları',FileText],['Gelen Mesajlar',Inbox],['Gönderim Geçmişi',History],['Raporlar',ChartNoAxesCombined],['WhatsApp API Ayarları',Settings],['Sistem Ayarları',SlidersHorizontal]] as const;
 const labels:Row={draft:'Taslak',scheduled:'Planlandı',running:'Gönderiliyor',paused:'Duraklatıldı',cancelled:'İptal edildi',completed:'Tamamlandı',queued:'Kuyrukta',retry:'Tekrar bekliyor',sending:'İşleniyor',accepted:'API kabul etti',sent:'Gönderildi',delivered:'Teslim edildi',read:'Okundu',failed:'Başarısız',blocked:'Engellendi',uncertain:'Sonuç belirsiz',dry_run:'DRY_RUN',received:'Gelen',unverified:'Doğrulanmadı',verified:'Doğrulandı',revoked:'İzin geri çekildi',review:'İnceleme bekliyor',APPROVED:'Meta onaylı',LOCAL_DRAFT:'Yerel taslak',PENDING:'Meta incelemesinde',REJECTED:'Reddedildi',MARKETING:'Pazarlama',UTILITY:'Utility',AUTHENTICATION:'Kimlik doğrulama'};
 function Badge({value}:{value:string}){return <span className={'badge '+(['verified','APPROVED','delivered','read','completed'].includes(value)?'good':['failed','blocked','revoked','uncertain','REJECTED'].includes(value)?'bad':'neutral')}>{labels[value]||value}</span>}

@@ -1,4 +1,5 @@
 """Build send-time components from approved template definitions, never from client JSON."""
+import logging
 import ipaddress
 import json
 import re
@@ -65,7 +66,10 @@ def public_media_link(value):
 def validate_upload(kind,upload):
     _,limit,mimes=MEDIA_TYPES[kind]
     if upload.content_type not in mimes:raise HTTPException(422,'Şablon başlığı için dosya türü uygun değil. Görsel: JPEG/PNG; video: MP4/3GP; belge: PDF.')
-    if not upload.content or len(upload.content)>limit:raise HTTPException(422,f'Dosya boş veya {limit//(1024*1024)} MB boyut sınırını aşıyor.')
+    size=len(upload.content)
+    logging.getLogger('hys.media').info('media_validation kind=%s validation_bytes=%s output_bytes=%s',kind,size,size)
+    if not size:raise HTTPException(422,'Backend boş dosya aldı (0 bayt). Dosyayı yeniden seçin.')
+    if size>limit:raise HTTPException(413,f'Backend dosya boyutu en az {size} bayt; sınır {limit} bayt ({limit//(1024*1024)} MiB).')
     signatures={'image/jpeg':upload.content.startswith(b'\xff\xd8'),
                 'image/png':upload.content.startswith(b'\x89PNG\r\n\x1a\n'),
                 'application/pdf':upload.content.startswith(b'%PDF-'),

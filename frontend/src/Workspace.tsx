@@ -2,6 +2,7 @@ import ConversationOperations,{statusNames} from './ConversationOperations';
 import useMessageSound from './useMessageSound';
 import StaffAccounts from './StaffAccounts';
 import SettingsWorkspace from './SettingsWorkspace';
+import {api} from './api';
 import Notifications from './Notifications';
 import IncomingContent from './IncomingContent';
 import MessageComposer from './MessageComposer';
@@ -20,7 +21,6 @@ import type {TemplateValues} from './TemplateFields';
 type Obj=Record<string,any>;
 type MessageTemplate=Obj&{body:string};
 type Props={user:Obj;onLogout:()=>void};
-async function api(path:string,method='GET',body?:any){const r=await fetch('/api'+path,{method,headers:{'X-HYS-Request':'1',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)});let d:any={};try{d=await r.json()}catch{}if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:d.detail?.message?(d.detail.message+(d.detail.code!==undefined?' (Meta hata kodu: '+d.detail.code+')':'')):'İstek tamamlanamadı. Lütfen tekrar deneyin.');return d}
 function time(value:string){if(!value)return '';const d=new Date(value.endsWith('Z')?value:value+'Z');return d.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})}
 function date(value:string){if(!value)return '';const d=new Date(value.endsWith('Z')?value:value+'Z');return d.toLocaleDateString('tr-TR',{day:'2-digit',month:'short'})}
 function sendSingleMessage(payload:any,file:File|null){if((file as any)?.videoJobId)return api('/conversations/send','POST',{...payload,video_job_id:(file as any).videoJobId});if(file){const form=new FormData();form.append('data',JSON.stringify(payload));form.append('file',file);return api('/conversations/send-with-media','POST',form);}return api('/conversations/send','POST',payload)}
