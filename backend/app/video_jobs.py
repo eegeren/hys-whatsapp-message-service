@@ -1,3 +1,4 @@
+from app.media_io import record_received
 """Private DB-backed video jobs. API/worker replicas never depend on shared disks."""
 import hashlib,hmac,json,logging,re,secrets,time,uuid
 from datetime import timedelta
@@ -82,7 +83,7 @@ async def upload_job(id:str,token:str,request:Request,db=Depends(db_session)):
         with tempfile.SpooledTemporaryFile(max_size=1024*1024,mode='w+b') as tmp:
             size=0
             async for chunk in request.stream():
-                size+=len(chunk)
+                size+=len(chunk);record_received(len(chunk),stream=True)
                 if size>job.source_size:raise HTTPException(413,'Dosya belirtilen kaynak boyutunu aşıyor.')
                 tmp.write(chunk)
             if size!=job.source_size:raise HTTPException(422,'Video eksik yüklendi. Dosyayı yeniden seçin.')

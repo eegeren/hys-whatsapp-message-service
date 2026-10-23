@@ -1,3 +1,4 @@
+from app.media_io import read_upload
 import json, hmac, hashlib, io, time
 from pathlib import Path
 from app.video_processing import VIDEO_EXTENSIONS
@@ -142,7 +143,7 @@ def send_conversation_media(data:str=Form(...,max_length=100000),file:UploadFile
             kind=str(definitions(template).get('HEADER',{}).get('format','')).upper()
         if kind not in MEDIA_TYPES:raise HTTPException(422,'Bu şablonda medya başlığı bulunmuyor.')
         limit=settings.video_input_limit_mb*1024*1024 if kind=='VIDEO' else MEDIA_TYPES[kind][1]
-        content=file.file.read(limit+1)
+        content=read_upload(file,limit)
         asset=MediaUpload(filename=(file.filename or 'dosya').replace('\\','/').rsplit('/',1)[-1],content_type=file.content_type or '',content=content)
         if kind=='VIDEO':
             from app.video_processing import prepare_video,VideoError

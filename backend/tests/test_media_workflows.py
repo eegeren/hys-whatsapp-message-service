@@ -93,3 +93,17 @@ def test_sample_and_bulk_reuse_one_uploaded_media(client,monkeypatch,tmp_path):
     process_one(mid);finalize()
     assert client.post(f'/api/bulk/campaign/{cid}/start',json={'confirmed':True}).json()['queued']==1
     assert len(uploads)==1
+
+
+def test_single_upload_967_mb_reaches_dispatch_intact_without_meta(client,sender,monkeypatch):
+    import hashlib
+    raw=b'\x00\x00\x00\x18ftypisom'+b'x'*9_669_988
+    def capture(data,user,db,upload=None):
+        assert upload.content==raw
+        return {'received_bytes':len(upload.content),'sha256':hashlib.sha256(upload.content).hexdigest(),'message_sent':False}
+    monkeypatch.setattr('app.messaging.send_direct_message',capture)
+    response=media_post(client,kind='VIDEO',content=raw)
+    assert response.status_code==200,response.text
+    assert response.json()['received_bytes']==9_670_000
+    assert response.json()['sha256']==hashlib.sha256(raw).hexdigest()
+    assert sender==[]

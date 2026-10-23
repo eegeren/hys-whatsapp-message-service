@@ -1,3 +1,4 @@
+from app.media_io import read_upload
 import hashlib, secrets, json, time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -40,7 +41,14 @@ async def production_api_guard(request:Request,call_next):
                 try:
                     with Session() as db:actor(request,db)
                 except HTTPException as e:return JSONResponse({'detail':e.detail},status_code=e.status_code)
-    response=await call_next(request)
+    from app.media_io import upload_metrics,log
+    metrics={'received_bytes':None};metric_token=upload_metrics.set(metrics)
+    try:
+        response=await call_next(request)
+        if metrics['received_bytes'] is not None or request.method in ('POST','PUT'):
+            route=request.scope.get('route')
+            log.info('upload_request route=%s received_bytes=%s http_status=%s',getattr(route,'path','unmatched'),metrics['received_bytes'] if metrics['received_bytes'] is not None else 'not_read',response.status_code)
+    finally:upload_metrics.reset(metric_token)
     if request.url.path.startswith('/api/'):
         response.headers.setdefault('Cache-Control','no-store')
         response.headers['X-Content-Type-Options']='nosniff'
@@ -180,7 +188,7 @@ def inspect_media(file:UploadFile=File(...),browser_bytes:int=Form(...,ge=0),use
             raise HTTPException(422,f'Dosya boyutları eşleşmiyor: tarayıcı {browser_bytes} bayt, backend {received} bayt.')
         limit=MEDIA_TYPES[kind][1]
         if received and received>limit:raise HTTPException(413,f'Backend {received} bayt aldı; sınır {limit} bayt. Dönüşüm uygulanmadı.')
-        content=file.file.read(limit+1)
+        content=read_upload(file,limit)
         validate_upload(kind,MediaUpload(file.filename or 'medya',file.content_type,content))
         return {'browser_bytes':browser_bytes,'received_bytes':received,'conversion_applied':False,'output_bytes':len(content),'codec_validation':'not_performed','message_sent':False}
     finally:file.file.close()

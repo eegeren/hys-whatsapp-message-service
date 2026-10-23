@@ -1,3 +1,4 @@
+from app.media_io import read_upload
 """Admin-confirmed carousel template review submission. Never sends messages."""
 import hashlib,json
 from fastapi import Depends,File,Form,HTTPException,UploadFile
@@ -44,7 +45,7 @@ def carousel_review(data:str=Form(...,max_length=50000),files:list[UploadFile]=F
                              {'type':'BUTTONS','buttons':[{'type':'QUICK_REPLY','text':proposal.button_text}]}]} for c in proposal.cards]
         assets=[]
         for file in files:
-            asset=MediaUpload((file.filename or 'gorsel').replace('\\','/').rsplit('/',1)[-1][:200],file.content_type or '',file.file.read(5*1024*1024+1))
+            asset=MediaUpload((file.filename or 'gorsel').replace('\\','/').rsplit('/',1)[-1][:200],file.content_type or '',read_upload(file,5*1024*1024))
             validate_upload('IMAGE',asset);assets.append(asset)
         # Read-only checks must precede any sample upload or template mutation.
         numbers=graph('GET',settings.meta_waba_id+'/phone_numbers',params={'fields':'id','limit':100})

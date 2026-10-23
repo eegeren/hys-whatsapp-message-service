@@ -68,7 +68,7 @@ def validate_upload(kind,upload):
     if upload.content_type not in mimes:raise HTTPException(422,'Şablon başlığı için dosya türü uygun değil. Görsel: JPEG/PNG; video: MP4/3GP; belge: PDF.')
     size=len(upload.content)
     logging.getLogger('hys.media').info('media_validation kind=%s validation_bytes=%s output_bytes=%s',kind,size,size)
-    if not size:raise HTTPException(422,'Backend boş dosya aldı (0 bayt). Dosyayı yeniden seçin.')
+    if not size:raise HTTPException(422,'Yükleme içeriği boş (0 bayt); dosya aktarımı tamamlanamadı.')
     if size>limit:raise HTTPException(413,f'Backend dosya boyutu en az {size} bayt; sınır {limit} bayt ({limit//(1024*1024)} MiB).')
     signatures={'image/jpeg':upload.content.startswith(b'\xff\xd8'),
                 'image/png':upload.content.startswith(b'\x89PNG\r\n\x1a\n'),

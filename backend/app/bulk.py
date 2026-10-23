@@ -1,3 +1,4 @@
+from app.media_io import read_upload
 """Permission-matched bulk campaigns. No automatic real sends."""
 import hashlib,io,json,secrets,re
 from datetime import datetime,timedelta
@@ -85,7 +86,7 @@ def create_bulk_media(data:str=Form(...,max_length=100000),file:UploadFile=File(
         t=require(db,Template,inputs.template_id)
         kind=definitions(t).get('HEADER',{}).get('format','')
         if kind not in ('IMAGE','VIDEO'):raise HTTPException(422,'Dosya için IMAGE veya VIDEO başlıklı Marketing şablonu seçin.')
-        asset=MediaUpload((file.filename or 'medya').replace('\\','/').rsplit('/',1)[-1],file.content_type or '',file.file.read(16*1024*1024+1))
+        asset=MediaUpload((file.filename or 'medya').replace('\\','/').rsplit('/',1)[-1],file.content_type or '',read_upload(file,16*1024*1024))
         if asset.content_type not in ('image/jpeg','image/png','video/mp4'):raise HTTPException(422,'JPG, PNG veya MP4 dosyası seçin.')
         validate_upload(kind,asset)
         return prepare_bulk(inputs,user,db,asset)
@@ -101,7 +102,7 @@ def create_bulk_carousel(data:str=Form(...,max_length=100000),files:list[UploadF
         if not isinstance(indexes,list) or len(files)!=len(indexes) or not 1<=len(files)<=10 or any(type(i)!=int for i in indexes) or len(set(indexes))!=len(indexes):raise HTTPException(422,'Görsel kartları geçersiz.')
         assets={}
         for index,file in zip(indexes,files):
-            asset=MediaUpload((file.filename or 'medya').replace('\\','/').rsplit('/',1)[-1],file.content_type or '',file.file.read(16*1024*1024+1))
+            asset=MediaUpload((file.filename or 'medya').replace('\\','/').rsplit('/',1)[-1],file.content_type or '',read_upload(file,16*1024*1024))
             if asset.content_type not in ('image/jpeg','image/png','video/mp4'):raise HTTPException(422,'JPG, PNG veya MP4 dosyası seçin.')
             assets[index]=asset
         return prepare_bulk(inputs,user,db,card_uploads=assets)

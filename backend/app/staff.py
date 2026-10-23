@@ -1,3 +1,5 @@
+from app.media_io import record_received
+from app.media_io import read_upload
 """Independent staff audience, private expiring assets and durable at-most-once queue."""
 import hashlib,json,secrets,re,subprocess,tempfile
 from urllib.parse import urlsplit
@@ -139,7 +141,7 @@ async def direct_upload(token:str,request:Request,db=Depends(db_session)):
     with tempfile.SpooledTemporaryFile(max_size=1024*1024,mode='w+b') as temporary:
         size=0
         async for chunk in request.stream():
-            size+=len(chunk)
+            size+=len(chunk);record_received(len(chunk),stream=True)
             if size>data['size']:raise HTTPException(413,'Dosya belirtilen boyutu aşıyor.')
             temporary.write(chunk)
         if size!=data['size']:raise HTTPException(422,'Dosya eksik yüklendi.')
@@ -157,7 +159,7 @@ async def add_asset(id:int,file:UploadFile=File(...),user=Depends(admin),db=Depe
     kind='document' if ext=='.pdf' else 'video';mime='application/pdf' if kind=='document' else 'video/mp4';limit=(100 if kind=='document' else 16)*1024*1024
     if kind=='document' and existing or kind=='video' and not existing:raise HTTPException(422,'Önce tek PDF yükleyin, ardından videoları ekleyin.')
     if len(existing)>=11:raise HTTPException(422,'En fazla bir PDF ve 10 video ekleyin.')
-    raw=await file.read(limit+1)
+    raw=read_upload(file,limit)
     if len(raw)>limit:raise HTTPException(413,f'{kind}: en fazla {limit//1024//1024} MB.')
     name=re.sub(r'[^\w. -]','_',Path(file.filename or '').name)[:200]
     validate_upload(kind.upper(),MediaUpload(name,mime,raw))

@@ -1,9 +1,10 @@
+import {api as request,uploadBinary} from './api';
 import {useEffect,useState} from 'react';
 import Notifications from './Notifications';
 import MediaTemplateCreator from './MediaTemplateCreator';
 import VideoProcessor,{videoJobStatus} from './VideoProcessor';
 type Obj=Record<string,any>;
-async function api(path:string,method='GET',body?:any){const r=await fetch('/api/staff'+path,{method,headers:{'X-HYS-Request':'1',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'İstek tamamlanamadı.');return d;}
+const api=(path:string,method='GET',body?:any)=>request('/staff'+path,method,body);
 const labels:Record<string,string>={queued:'Bekliyor',sending:'Gönderiliyor',accepted:'API kabul etti',sent:'API kabul etti · teslimat bekleniyor',delivered:'Teslim edildi',read:'Okundu',failed:'Başarısız',uncertain:'Sonuç belirsiz · tekrar gönderilmez',cancelled:'İptal edildi',dry_run:'Simülasyon · gönderilmedi',draft:'Taslak',running:'Gönderim sürüyor',paused:'Duraklatıldı',completed:'Tamamlandı'};
 export default function StaffPanel({user}:{user:Obj}){
  const [audienceSource,setAudienceSource]=useState('upload'),[importedIds,setImportedIds]=useState<number[]>([]),[importedFilename,setImportedFilename]=useState('');
@@ -15,7 +16,7 @@ export default function StaffPanel({user}:{user:Obj}){
  async function run(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError(String(e))}finally{setBusy(false)}}
  async function draft(){if(id)return id;const a=await api('/announcements','POST',{name});setId(a.id);return a.id as number;}
  function invalidate(){setPreview(null);setLive(false)}
- async function upload(files:FileList|null){if(!files)return;const uploads=Array.from(files);invalidate();await run(async()=>{const a=await draft();for(const file of uploads){const ticket=await api(`/announcements/${a}/upload-ticket`,'POST',{filename:file.name,size:file.size});const response=await fetch(ticket.url,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:file,credentials:'omit'});if(!response.ok){const d=await response.json();throw Error(d.detail||'Dosya yüklenemedi.');}}setDetail(await api('/announcements/'+a));});}
+ async function upload(files:FileList|null){if(!files)return;const uploads=Array.from(files);invalidate();await run(async()=>{const a=await draft();for(const file of uploads){const ticket=await api(`/announcements/${a}/upload-ticket`,'POST',{filename:file.name,size:file.size});await uploadBinary(ticket.url,file);}setDetail(await api('/announcements/'+a));});}
  async function refreshTemplates(){if(!health?.dry_run){const r=await fetch('/api/templates/sync',{method:'POST',headers:{'X-HYS-Request':'1','Content-Type':'application/json'},body:'{}'});if(!r.ok){const d=await r.json();throw Error(typeof d.detail==='string'?d.detail:'Meta durumu alınamadı.')}}const response=await fetch('/api/templates');if(!response.ok)throw Error('Şablon listesi alınamadı.');setTemplates(await response.json())}
  const approved=(kind:string)=>templates.filter(t=>t.status==='APPROVED'&&!t.body.includes('{{')&&JSON.parse(t.components||'[]').some((c:Obj)=>c.type?.toUpperCase()==='HEADER'&&c.format?.toUpperCase()===kind));
  useEffect(()=>{for(const kind of ['DOCUMENT','VIDEO']){const rows=approved(kind);if(rows.length===1){if(kind==='DOCUMENT'&&!doc)setDoc(String(rows[0].id));if(kind==='VIDEO'&&!video)setVideo(String(rows[0].id))}}},[templates]);

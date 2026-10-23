@@ -1,3 +1,4 @@
+import {api as request} from './api';
 import Notifications from './Notifications';
 import CarouselTemplateCreator from './CarouselTemplateCreator';
 import {useEffect,useRef,useState} from 'react';
@@ -5,7 +6,7 @@ import {Upload,Send,RefreshCw,Pause,Play,Square,Download,ShieldCheck} from 'luci
 import TemplateFields,{templateInputs,templateComplete} from './TemplateFields';
 import type {TemplateValues} from './TemplateFields';
 type Obj=Record<string,any>;
-async function api(path:string,method='GET',body?:any){const r=await fetch('/api'+path,{method,headers:{'X-HYS-Request':'1',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:d.detail?.message?d.detail.message+(d.detail.code!==undefined?' (Meta kodu: '+d.detail.code+')':''):'İşlem tamamlanamadı.');return d;}
+const api=(path:string,method='GET',body?:any)=>request(''+path,method,body);
 const labels:Record<string,string>={draft:'Onay bekliyor',preparing:'Medya yükleniyor',running:'Gönderim sürüyor',paused:'Duraklatıldı',completed:'Kuyruk tamamlandı',cancelled:'Durduruldu',scheduled:'Planlandı'};
 const messageLabels:Record<string,string>={queued:'Bekliyor',retry:'Bekleme sonrası yeniden denenecek',sending:'API isteği sürüyor',accepted:'API kabul etti',sent:'Gönderildi',delivered:'Teslim edildi',read:'Okundu',failed:'Başarısız',blocked:'Engellendi',uncertain:'Sonuç belirsiz',cancelled:'Durduruldu',dry_run:'Simüle edildi'};
 export default function BulkPanel({user}:{user:Obj}){

@@ -50,3 +50,13 @@ def test_meta_media_error_preserves_code_and_size_without_sending(monkeypatch):
     assert error.value.detail['code']==131053
     assert '5 bayt' in error.value.detail['message']
     assert 'Mesaj gönderilmedi' in error.value.detail['message']
+
+
+def test_consumed_upload_is_rewound():
+    import io
+    from starlette.datastructures import UploadFile
+    from app.media_io import read_upload
+    raw=b'\x00\x00\x00\x18ftypisom'+b'x'*9_669_988
+    file=UploadFile(io.BytesIO(raw),size=len(raw),filename='clip.mp4')
+    assert file.file.read()==raw
+    assert read_upload(file,16*1024*1024)==raw
